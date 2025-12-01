@@ -50,7 +50,6 @@ import nl.vu.psy.ams.suite.main.AppSettings;
 // import javax.swing.ProgressMonitor;
 import nl.vu.psy.ams.suite.main.AppSettings.Settings;
 
-import com.github.psambit9791.jdsp.filter.Butterworth;
 import com.github.psambit9791.jdsp.signal.Decimate;
 // import ml.dmlc.xgboost4j.java.*;
 
@@ -1386,9 +1385,9 @@ public class ActivityClassification extends Thread {
         final double AA_CUTOFF = 4.5; // < 5 Hz (new Nyquist after /100)
 
         // Use the unified zero-phase low-pass helper instead of manual fwd/bwd passes
-        double[] aaX = zeroPhaseFilterLowPass(accelX, AA_ORDER, AA_CUTOFF, FS);
-        double[] aaY = zeroPhaseFilterLowPass(accelY, AA_ORDER, AA_CUTOFF, FS);
-        double[] aaZ = zeroPhaseFilterLowPass(accelZ, AA_ORDER, AA_CUTOFF, FS);
+        double[] aaX = ZeroPhaseFilter.zeroPhaseFilterLowPassFilterJDSP(accelX, AA_ORDER, AA_CUTOFF, FS);
+        double[] aaY = ZeroPhaseFilter.zeroPhaseFilterLowPassFilterJDSP(accelY, AA_ORDER, AA_CUTOFF, FS);
+        double[] aaZ = ZeroPhaseFilter.zeroPhaseFilterLowPassFilterJDSP(accelZ, AA_ORDER, AA_CUTOFF, FS);
 
         // 2) DECIMATE anti-aliased signals
         Decimate decX = new Decimate(aaX, FS, true);
@@ -1400,9 +1399,9 @@ public class ActivityClassification extends Thread {
 
         // 3) BAND-PASS @ 10 Hz (analysis filter moved post-decimation)
         final int BP_ORDER = 10;
-        double[] fdx = zeroPhaseFilterBandPass(dx, BP_ORDER, 0.4, 2.8, FS_DEC_INT);
-        double[] fdy = zeroPhaseFilterBandPass(dy, BP_ORDER, 0.4, 2.8, FS_DEC_INT);
-        double[] fdz = zeroPhaseFilterBandPass(dz, BP_ORDER, 0.4, 2.8, FS_DEC_INT);
+        double[] fdx = ZeroPhaseFilter.zeroPhaseBandPassFilterJDSP(dx, BP_ORDER, 0.4, 2.8, FS_DEC_INT);
+        double[] fdy = ZeroPhaseFilter.zeroPhaseBandPassFilterJDSP(dy, BP_ORDER, 0.4, 2.8, FS_DEC_INT);
+        double[] fdz = ZeroPhaseFilter.zeroPhaseBandPassFilterJDSP(dz, BP_ORDER, 0.4, 2.8, FS_DEC_INT);
 
         // (optional) debug
         // saveColumns("decimated_bp.txt", false, fdx, fdy, fdz);
@@ -1960,68 +1959,6 @@ public class ActivityClassification extends Thread {
                 posture = posture + "/" + namesIterator.next();
         }
         return posture;
-    }
-
-    private static double[] zeroPhaseFilterBandPass(double[] signal, int order, double lowCut, double highCut, int Fs) {
-        Butterworth filter = new Butterworth(Fs);
-
-        // First pass: forward filtering
-        double[] filtered = filter.bandPassFilter(signal, order, lowCut, highCut);
-
-        // Reverse the filtered signal
-        double[] reversed = reverseArray(filtered);
-
-        // Second pass: filtering the reversed signal
-        Butterworth filter2 = new Butterworth(Fs);
-        double[] filteredReversed = filter2.bandPassFilter(reversed, order, lowCut, highCut);
-
-        // Reverse again to restore original order
-        return reverseArray(filteredReversed);
-    }
-
-    @SuppressWarnings("unused")
-    private static double[] zeroPhaseFilterLowPass(double[] signal, int order, double cutOff, int Fs) {
-        Butterworth filter = new Butterworth(Fs);
-
-        // First pass: forward filtering
-        double[] filtered = filter.lowPassFilter(signal, order, cutOff);
-
-        // Reverse the filtered signal
-        double[] reversed = reverseArray(filtered);
-
-        // Second pass: filtering the reversed signal
-        Butterworth filter2 = new Butterworth(Fs);
-        double[] filteredReversed = filter2.lowPassFilter(reversed, order, cutOff);
-
-        // Reverse again to restore original order
-        return reverseArray(filteredReversed);
-    }
-
-    @SuppressWarnings("unused")
-    private static double[] zeroPhaseFilterHighPass(double[] signal, int order, double cutOff, int Fs) {
-        Butterworth filter = new Butterworth(Fs);
-
-        // First pass: forward filtering
-        double[] filtered = filter.highPassFilter(signal, order, cutOff);
-
-        // Reverse the filtered signal
-        double[] reversed = reverseArray(filtered);
-
-        // Second pass: filtering the reversed signal
-        Butterworth filter2 = new Butterworth(Fs);
-        double[] filteredReversed = filter2.highPassFilter(reversed, order, cutOff);
-
-        // Reverse again to restore original order
-        return reverseArray(filteredReversed);
-    }
-
-    // Helper method to reverse an array
-    private static double[] reverseArray(double[] array) {
-        double[] reversed = new double[array.length];
-        for (int i = 0; i < array.length; i++) {
-            reversed[i] = array[array.length - 1 - i];
-        }
-        return reversed;
     }
 
     /**

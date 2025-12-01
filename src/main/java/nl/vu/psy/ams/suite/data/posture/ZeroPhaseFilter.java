@@ -4,7 +4,6 @@ import com.github.psambit9791.jdsp.signal.Decimate;
 
 import java.util.Arrays;
 
-
 @SuppressWarnings("unused")
 public class ZeroPhaseFilter {
 
@@ -53,6 +52,202 @@ public class ZeroPhaseFilter {
             index += downSamplingFactor;
         }
         return output;
+    }
+
+    /**
+     * Apply zero-phase Butterworth bandpass filter using JDSP library.
+     * This method pads the signal using reflection, applies forward and backward
+     * filtering
+     * to achieve zero-phase distortion, and then removes the padding.
+     *
+     * @param signal  Input signal to filter
+     * @param order   Filter order
+     * @param lowCut  Lower cutoff frequency (Hz)
+     * @param highCut Upper cutoff frequency (Hz)
+     * @param Fs      Sampling frequency (Hz)
+     * @return Filtered signal with zero phase distortion
+     */
+    public static double[] zeroPhaseBandPassFilterJDSP(double[] signal, int order, double lowCut, double highCut,
+            int Fs) {
+        // Determine padding length. A common heuristic is 3 times the filter order.
+        // Ensure padding length does not exceed the signal length to avoid issues with
+        // reflection.
+        int padlen = Math.min(signal.length - 1, 3 * order);
+        if (padlen <= 0) { // Handle very short signals or order 0
+            padlen = 1; // Minimum padding
+        }
+
+        // 1. Create a padded signal using reflection
+        double[] paddedSignal = new double[signal.length + 2 * padlen];
+
+        // Pad the beginning by reflecting the first 'padlen' samples
+        for (int i = 0; i < padlen; i++) {
+            paddedSignal[i] = signal[padlen - 1 - i];
+        }
+
+        // Copy the original signal to the middle
+        System.arraycopy(signal, 0, paddedSignal, padlen, signal.length);
+
+        // Pad the end by reflecting the last 'padlen' samples
+        for (int i = 0; i < padlen; i++) {
+            paddedSignal[padlen + signal.length + i] = signal[signal.length - 1 - i];
+        }
+
+        // 2. Apply forward filter
+        com.github.psambit9791.jdsp.filter.Butterworth filterForward = new com.github.psambit9791.jdsp.filter.Butterworth(
+                Fs);
+        double[] forwardFilteredPadded = filterForward.bandPassFilter(paddedSignal, order, lowCut, highCut);
+
+        // 3. Reverse the signal
+        double[] reversedPadded = reverseArray(forwardFilteredPadded);
+
+        // 4. Apply reverse filter
+        com.github.psambit9791.jdsp.filter.Butterworth filterReverse = new com.github.psambit9791.jdsp.filter.Butterworth(
+                Fs); // Fresh instance
+        double[] backwardFilteredPadded = filterReverse.bandPassFilter(reversedPadded, order, lowCut, highCut);
+
+        // 5. Final reversal
+        double[] zeroPhaseFilteredPadded = reverseArray(backwardFilteredPadded);
+
+        // 6. Trim the signal to remove padding
+        double[] result = new double[signal.length];
+        System.arraycopy(zeroPhaseFilteredPadded, padlen, result, 0, signal.length);
+
+        return result;
+    }
+
+    /**
+     * Reverse the elements of an array.
+     *
+     * @param array Input array to reverse
+     * @return New array with elements in reverse order
+     */
+    private static double[] reverseArray(double[] array) {
+        double[] reversed = new double[array.length];
+        for (int i = 0; i < array.length; i++) {
+            reversed[i] = array[array.length - 1 - i];
+        }
+        return reversed;
+    }
+
+    /**
+     * Apply zero-phase Butterworth low-pass filter using JDSP library.
+     * This method pads the signal using reflection, applies forward and backward
+     * filtering
+     * to achieve zero-phase distortion, and then removes the padding.
+     *
+     * @param signal Input signal to filter
+     * @param order  Filter order
+     * @param cutOff Cutoff frequency (Hz)
+     * @param Fs     Sampling frequency (Hz)
+     * @return Filtered signal with zero phase distortion
+     */
+    public static double[] zeroPhaseFilterLowPassFilterJDSP(double[] signal, int order, double cutOff, int Fs) {
+        // Determine padding length. A common heuristic is 3 times the filter order.
+        // Ensure padding length does not exceed the signal length to avoid issues with
+        // reflection.
+        int padlen = Math.min(signal.length - 1, 3 * order);
+        if (padlen <= 0) { // Handle very short signals or order 0
+            padlen = 1; // Minimum padding
+        }
+
+        // 1. Create a padded signal using reflection
+        double[] paddedSignal = new double[signal.length + 2 * padlen];
+
+        // Pad the beginning by reflecting the first 'padlen' samples
+        for (int i = 0; i < padlen; i++) {
+            paddedSignal[i] = signal[padlen - 1 - i];
+        }
+
+        // Copy the original signal to the middle
+        System.arraycopy(signal, 0, paddedSignal, padlen, signal.length);
+
+        // Pad the end by reflecting the last 'padlen' samples
+        for (int i = 0; i < padlen; i++) {
+            paddedSignal[padlen + signal.length + i] = signal[signal.length - 1 - i];
+        }
+
+        // 2. Apply forward filter
+        com.github.psambit9791.jdsp.filter.Butterworth filterForward = new com.github.psambit9791.jdsp.filter.Butterworth(
+                Fs);
+        double[] forwardFilteredPadded = filterForward.lowPassFilter(paddedSignal, order, cutOff);
+
+        // 3. Reverse the signal
+        double[] reversedPadded = reverseArray(forwardFilteredPadded);
+
+        // 4. Apply reverse filter
+        com.github.psambit9791.jdsp.filter.Butterworth filterReverse = new com.github.psambit9791.jdsp.filter.Butterworth(
+                Fs); // Fresh instance
+        double[] backwardFilteredPadded = filterReverse.lowPassFilter(reversedPadded, order, cutOff);
+
+        // 5. Final reversal
+        double[] zeroPhaseFilteredPadded = reverseArray(backwardFilteredPadded);
+
+        // 6. Trim the signal to remove padding
+        double[] result = new double[signal.length];
+        System.arraycopy(zeroPhaseFilteredPadded, padlen, result, 0, signal.length);
+
+        return result;
+    }
+
+    /**
+     * Apply zero-phase Butterworth high-pass filter using JDSP library.
+     * This method pads the signal using reflection, applies forward and backward
+     * filtering
+     * to achieve zero-phase distortion, and then removes the padding.
+     *
+     * @param signal Input signal to filter
+     * @param order  Filter order
+     * @param cutOff Cutoff frequency (Hz)
+     * @param Fs     Sampling frequency (Hz)
+     * @return Filtered signal with zero phase distortion
+     */
+    public static double[] zeroPhaseFilterHighPassFilterJDSP(double[] signal, int order, double cutOff, int Fs) {
+        // Determine padding length. A common heuristic is 3 times the filter order.
+        // Ensure padding length does not exceed the signal length to avoid issues with
+        // reflection.
+        int padlen = Math.min(signal.length - 1, 3 * order);
+        if (padlen <= 0) { // Handle very short signals or order 0
+            padlen = 1; // Minimum padding
+        }
+
+        // 1. Create a padded signal using reflection
+        double[] paddedSignal = new double[signal.length + 2 * padlen];
+
+        // Pad the beginning by reflecting the first 'padlen' samples
+        for (int i = 0; i < padlen; i++) {
+            paddedSignal[i] = signal[padlen - 1 - i];
+        }
+
+        // Copy the original signal to the middle
+        System.arraycopy(signal, 0, paddedSignal, padlen, signal.length);
+
+        // Pad the end by reflecting the last 'padlen' samples
+        for (int i = 0; i < padlen; i++) {
+            paddedSignal[padlen + signal.length + i] = signal[signal.length - 1 - i];
+        }
+
+        // 2. Apply forward filter
+        com.github.psambit9791.jdsp.filter.Butterworth filterForward = new com.github.psambit9791.jdsp.filter.Butterworth(
+                Fs);
+        double[] forwardFilteredPadded = filterForward.highPassFilter(paddedSignal, order, cutOff);
+
+        // 3. Reverse the signal
+        double[] reversedPadded = reverseArray(forwardFilteredPadded);
+
+        // 4. Apply reverse filter
+        com.github.psambit9791.jdsp.filter.Butterworth filterReverse = new com.github.psambit9791.jdsp.filter.Butterworth(
+                Fs); // Fresh instance
+        double[] backwardFilteredPadded = filterReverse.highPassFilter(reversedPadded, order, cutOff);
+
+        // 5. Final reversal
+        double[] zeroPhaseFilteredPadded = reverseArray(backwardFilteredPadded);
+
+        // 6. Trim the signal to remove padding
+        double[] result = new double[signal.length];
+        System.arraycopy(zeroPhaseFilteredPadded, padlen, result, 0, signal.length);
+
+        return result;
     }
 
     private static abstract class ButterworthFilter {
@@ -132,8 +327,10 @@ public class ZeroPhaseFilter {
             // compute y_ss
             double sumB = 0.0;
             double sumA = 0.0;
-            for (double v : b) sumB += v;
-            for (double v : a) sumA += v; // a[0] usually 1
+            for (double v : b)
+                sumB += v;
+            for (double v : a)
+                sumA += v; // a[0] usually 1
 
             double ySs = (sumA == 0.0) ? 0.0 : (sumB / sumA) * x0;
 

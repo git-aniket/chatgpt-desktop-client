@@ -4,7 +4,6 @@ import org.apache.commons.math3.stat.StatUtils;
 import org.apache.commons.math3.stat.descriptive.rank.Percentile;
 import org.apache.commons.math3.util.FastMath;
 
-import com.github.psambit9791.jdsp.filter.Butterworth;
 import com.github.psambit9791.jdsp.signal.Resample;
 
 import nl.vu.psy.ams.suite.data.structures.AmsLabel;
@@ -59,67 +58,12 @@ public class PhysicalActivityCalculator {
 
     public void setAccelerometerData(double[] xData, double[] yData, double[] zData) {
         // Apply filter to the raw data
-        this.filteredX = zeroPhaseFilter(xData, 2, 0.25, 2.5, SAMPLING_FREQUENCY);
-        this.filteredY = zeroPhaseFilter(yData, 2, 0.25, 2.5, SAMPLING_FREQUENCY);
-        this.filteredZ = zeroPhaseFilter(zData, 2, 0.25, 2.5, SAMPLING_FREQUENCY);
+        this.filteredX = ZeroPhaseFilter.zeroPhaseBandPassFilterJDSP(xData, 2, 0.25, 2.5, SAMPLING_FREQUENCY);
+        this.filteredY = ZeroPhaseFilter.zeroPhaseBandPassFilterJDSP(yData, 2, 0.25, 2.5, SAMPLING_FREQUENCY);
+        this.filteredZ = ZeroPhaseFilter.zeroPhaseBandPassFilterJDSP(zData, 2, 0.25, 2.5, SAMPLING_FREQUENCY);
 
         this.fullMinutes = filteredX.length / samplesPerMinute;
         this.remainingSamples = filteredX.length % samplesPerMinute;
-    }
-
-    // Apply zero-phase Butterworth filter
-    private double[] zeroPhaseFilter(double[] signal, int order, double lowCut, double highCut, int Fs) {
-        // Determine padding length. A common heuristic is 3 times the filter order.
-        // Ensure padding length does not exceed the signal length to avoid issues with
-        // reflection.
-        int padlen = Math.min(signal.length - 1, 3 * order);
-        if (padlen <= 0) { // Handle very short signals or order 0
-            padlen = 1; // Minimum padding
-        }
-
-        // 1. Create a padded signal using reflection
-        double[] paddedSignal = new double[signal.length + 2 * padlen];
-
-        // Pad the beginning by reflecting the first 'padlen' samples
-        for (int i = 0; i < padlen; i++) {
-            paddedSignal[i] = signal[padlen - 1 - i];
-        }
-
-        // Copy the original signal to the middle
-        System.arraycopy(signal, 0, paddedSignal, padlen, signal.length);
-
-        // Pad the end by reflecting the last 'padlen' samples
-        for (int i = 0; i < padlen; i++) {
-            paddedSignal[padlen + signal.length + i] = signal[signal.length - 1 - i];
-        }
-
-        // 2. Apply forward filter
-        Butterworth filterForward = new Butterworth(Fs);
-        double[] forwardFilteredPadded = filterForward.bandPassFilter(paddedSignal, order, lowCut, highCut);
-
-        // 3. Reverse the signal
-        double[] reversedPadded = reverseArray(forwardFilteredPadded);
-
-        // 4. Apply reverse filter
-        Butterworth filterReverse = new Butterworth(Fs); // Fresh instance
-        double[] backwardFilteredPadded = filterReverse.bandPassFilter(reversedPadded, order, lowCut, highCut);
-
-        // 5. Final reversal
-        double[] zeroPhaseFilteredPadded = reverseArray(backwardFilteredPadded);
-
-        // 6. Trim the signal to remove padding
-        double[] result = new double[signal.length];
-        System.arraycopy(zeroPhaseFilteredPadded, padlen, result, 0, signal.length);
-
-        return result;
-    }
-
-    private double[] reverseArray(double[] array) {
-        double[] reversed = new double[array.length];
-        for (int i = 0; i < array.length; i++) {
-            reversed[i] = array[array.length - 1 - i];
-        }
-        return reversed;
     }
 
     /**
@@ -174,9 +118,9 @@ public class PhysicalActivityCalculator {
         }
 
         // Bandpass filter the data with IIR filter 7th order
-        double[] filteredX30 = zeroPhaseFilter(resampledX30, 7, 0.25, 3.1, 30);
-        double[] filteredY30 = zeroPhaseFilter(resampledY30, 7, 0.25, 3.1, 30);
-        double[] filteredZ30 = zeroPhaseFilter(resampledZ30, 7, 0.25, 3.1, 30);
+        double[] filteredX30 = ZeroPhaseFilter.zeroPhaseBandPassFilterJDSP(resampledX30, 7, 0.25, 3.1, 30);
+        double[] filteredY30 = ZeroPhaseFilter.zeroPhaseBandPassFilterJDSP(resampledY30, 7, 0.25, 3.1, 30);
+        double[] filteredZ30 = ZeroPhaseFilter.zeroPhaseBandPassFilterJDSP(resampledZ30, 7, 0.25, 3.1, 30);
 
         // Rescale the filtered data by factor 'a'
         double a = 17.127; // Rescaling factor
@@ -626,7 +570,7 @@ public class PhysicalActivityCalculator {
         // Apply zero-phase Butterworth bandpass filter to z-axis data to isolate
         // speech-relevant frequencies.
         // Filtering is performed once for efficiency.
-        double[] filteredZ = zeroPhaseFilter(zData, FILTER_ORDER, LOWER_CUTOFF_FREQUENCY,
+        double[] filteredZ = ZeroPhaseFilter.zeroPhaseBandPassFilterJDSP(zData, FILTER_ORDER, LOWER_CUTOFF_FREQUENCY,
                 UPPER_CUTOFF_FREQUENCY, SAMPLING_FREQUENCY);
 
         // --- Per-minute analysis loop ---
