@@ -280,45 +280,6 @@ public class ActivityClassification extends Thread {
         }
     }
 
-    // ! Activity intensity can be removed since this is to be replaced by the MET
-    // calculations
-    private static double calculateWindowSpectralEntropy(double[] window) {
-        // int windowLength = window.length;
-        // int paddedLength = nextPowerOfTwo(windowLength);
-        // double[] paddedWindow = Arrays.copyOf(window, paddedLength);
-
-        // // Perform FFT
-        // FastFourierTransformer fft = new
-        // FastFourierTransformer(DftNormalization.STANDARD);
-        // Complex[] fftResult = fft.transform(paddedWindow, TransformType.FORWARD);
-
-        // // Compute power spectrum
-        // double[] powerSpectrum = new double[paddedLength / 2];
-        // double sumPower = 0.0;
-        // for (int i = 0; i < paddedLength / 2; i++) {
-        // powerSpectrum[i] = Math.pow(fftResult[i].getReal(), 2) +
-        // Math.pow(fftResult[i].getImaginary(), 2);
-        // sumPower += powerSpectrum[i];
-        // }
-
-        // // Normalize power spectrum to get probability distribution
-        // double[] probabilityDistribution = new double[paddedLength / 2];
-        // for (int i = 0; i < paddedLength / 2; i++) {
-        // probabilityDistribution[i] = powerSpectrum[i] / sumPower;
-        // }
-
-        // // Calculate entropy
-        // double entropy = 0.0;
-        // for (double p : probabilityDistribution) {
-        // if (p > 0) {
-        // entropy -= p * Math.log(p) / Math.log(2);
-        // }
-        // }
-
-        // return entropy;
-        return 0;
-    }
-
     public static double[] centralDifference(double[] input) {
         int size = input.length;
         double[] output = new double[size];
@@ -517,9 +478,9 @@ public class ActivityClassification extends Thread {
 
             if (pressureAvailable) {
                 // Convert raw counts to physical units (m/s^2) once per chunk
-                double[] dx = toMs2(sampMX, chanX);
-                double[] dy = toMs2(sampMY, chanY);
-                double[] dz = toMs2(sampMZ, chanZ);
+                double[] dx = MotionDataUtils.toMs2(sampMX, chanX);
+                double[] dy = MotionDataUtils.toMs2(sampMY, chanY);
+                double[] dz = MotionDataUtils.toMs2(sampMZ, chanZ);
 
                 // Use the same calibrated arrays for both steps and posture
                 long globalStartUS = CurrentOpenData.getInstance().getStartTimeInUS();
@@ -1026,25 +987,6 @@ public class ActivityClassification extends Thread {
     }
 
     @SuppressWarnings("unused")
-    private static double[] getActivityIntensity(double[] motionSignal, int windowSize) {
-        double[] motilityIntensity = new double[motionSignal.length];
-        for (int i = 0; i < motionSignal.length; i += windowSize) {
-            if (i + windowSize > motionSignal.length)
-                windowSize = motionSignal.length - i;
-            double subArrayMeanAccel[] = Arrays.copyOfRange(motionSignal, i, i + windowSize);
-            double temp = calculateWindowSpectralEntropy(subArrayMeanAccel);
-            // if (temp > 0.19 && windowSize < 4096)
-            // System.out.println("ohoh");
-
-            // fill values of from i to i+windowSizeMotilitySignal and the activity label
-            for (int j = i; j < i + windowSize && j < motionSignal.length; j++) {
-                motilityIntensity[j] = temp;
-            }
-        }
-        return motilityIntensity;
-    }
-
-    @SuppressWarnings("unused")
     private static double[] getActivityIntensityLabel(double[] motilityIntensity) {
         double[] motilityIntensityLabel = new double[motilityIntensity.length];
         for (int i = 0; i < motilityIntensity.length; i++) {
@@ -1248,32 +1190,6 @@ public class ActivityClassification extends Thread {
         }
 
         return interpolatedArray;
-    }
-
-    /**
-     * Convert raw accelerometer counts to physical acceleration in m/s^2 using the
-     * per-channel calibration (real slope/constant). The device units are first
-     * converted to g, then multiplied by standard gravity.
-     * This mirrors the earlier working path in analyseMotility where values were
-     * computed as raw * realSlope * 9.8.
-     *
-     * NOTE: Call this once per chunk and reuse the resulting arrays so that
-     * multiple algorithms (steps, posture, etc.) operate on identical inputs.
-     */
-    private static double[] toMs2(int[] raw, Ams7fsChannelInfo chan) {
-        // Match the conversion used in analyseMotility: counts -> g via realSlope,
-        // then g -> m/s^2 by multiplying with standard gravity. Do NOT divide by slope.
-        // We intentionally do not use realConstant here because analyseMotility
-        // did not apply it either; using the same convention keeps values consistent
-        // across steps, posture, and motility (~9.8 m/s^2 at rest).
-        final double g = 9.80665; // m/s^2
-        final double slope = chan.getRealSlope();
-        double[] out = new double[raw.length];
-        for (int i = 0; i < raw.length; i++) {
-            double inG = raw[i] * slope; // counts -> g
-            out[i] = inG * g; // g -> m/s^2
-        }
-        return out;
     }
 
     public static double[] diff(double[] array) {
@@ -1510,9 +1426,9 @@ public class ActivityClassification extends Thread {
 
         // Find the shortest common length and convert once
         int minLength = Math.min(sampMX.length, Math.min(sampMY.length, sampMZ.length));
-        double[] sampleMXDouble = toMs2(java.util.Arrays.copyOf(sampMX, minLength), chanXLoc);
-        double[] sampleMYDouble = toMs2(java.util.Arrays.copyOf(sampMY, minLength), chanYLoc);
-        double[] sampleMZDouble = toMs2(java.util.Arrays.copyOf(sampMZ, minLength), chanZLoc);
+        double[] sampleMXDouble = MotionDataUtils.toMs2(java.util.Arrays.copyOf(sampMX, minLength), chanXLoc);
+        double[] sampleMYDouble = MotionDataUtils.toMs2(java.util.Arrays.copyOf(sampMY, minLength), chanYLoc);
+        double[] sampleMZDouble = MotionDataUtils.toMs2(java.util.Arrays.copyOf(sampMZ, minLength), chanZLoc);
 
         // **********************************************************************/
 
