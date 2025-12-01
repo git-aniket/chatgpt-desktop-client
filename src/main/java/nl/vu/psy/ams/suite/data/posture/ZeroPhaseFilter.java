@@ -1,6 +1,7 @@
 package nl.vu.psy.ams.suite.data.posture;
 
 import com.github.psambit9791.jdsp.signal.Decimate;
+import com.github.psambit9791.jdsp.filter.Butterworth;
 
 import java.util.Arrays;
 
@@ -94,16 +95,14 @@ public class ZeroPhaseFilter {
         }
 
         // 2. Apply forward filter
-        com.github.psambit9791.jdsp.filter.Butterworth filterForward = new com.github.psambit9791.jdsp.filter.Butterworth(
-                Fs);
+        Butterworth filterForward = new Butterworth(Fs);
         double[] forwardFilteredPadded = filterForward.bandPassFilter(paddedSignal, order, lowCut, highCut);
 
         // 3. Reverse the signal
         double[] reversedPadded = reverseArray(forwardFilteredPadded);
 
         // 4. Apply reverse filter
-        com.github.psambit9791.jdsp.filter.Butterworth filterReverse = new com.github.psambit9791.jdsp.filter.Butterworth(
-                Fs); // Fresh instance
+        Butterworth filterReverse = new Butterworth(Fs); // Fresh instance
         double[] backwardFilteredPadded = filterReverse.bandPassFilter(reversedPadded, order, lowCut, highCut);
 
         // 5. Final reversal
@@ -168,16 +167,14 @@ public class ZeroPhaseFilter {
         }
 
         // 2. Apply forward filter
-        com.github.psambit9791.jdsp.filter.Butterworth filterForward = new com.github.psambit9791.jdsp.filter.Butterworth(
-                Fs);
+        Butterworth filterForward = new Butterworth(Fs);
         double[] forwardFilteredPadded = filterForward.lowPassFilter(paddedSignal, order, cutOff);
 
         // 3. Reverse the signal
         double[] reversedPadded = reverseArray(forwardFilteredPadded);
 
         // 4. Apply reverse filter
-        com.github.psambit9791.jdsp.filter.Butterworth filterReverse = new com.github.psambit9791.jdsp.filter.Butterworth(
-                Fs); // Fresh instance
+        Butterworth filterReverse = new Butterworth(Fs); // Fresh instance
         double[] backwardFilteredPadded = filterReverse.lowPassFilter(reversedPadded, order, cutOff);
 
         // 5. Final reversal
@@ -228,16 +225,14 @@ public class ZeroPhaseFilter {
         }
 
         // 2. Apply forward filter
-        com.github.psambit9791.jdsp.filter.Butterworth filterForward = new com.github.psambit9791.jdsp.filter.Butterworth(
-                Fs);
+        Butterworth filterForward = new Butterworth(Fs);
         double[] forwardFilteredPadded = filterForward.highPassFilter(paddedSignal, order, cutOff);
 
         // 3. Reverse the signal
         double[] reversedPadded = reverseArray(forwardFilteredPadded);
 
         // 4. Apply reverse filter
-        com.github.psambit9791.jdsp.filter.Butterworth filterReverse = new com.github.psambit9791.jdsp.filter.Butterworth(
-                Fs); // Fresh instance
+        Butterworth filterReverse = new Butterworth(Fs); // Fresh instance
         double[] backwardFilteredPadded = filterReverse.highPassFilter(reversedPadded, order, cutOff);
 
         // 5. Final reversal
