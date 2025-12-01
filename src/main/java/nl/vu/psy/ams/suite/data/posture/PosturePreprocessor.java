@@ -12,6 +12,9 @@ import java.util.stream.LongStream;
 
 public class PosturePreprocessor {
 
+    public record PreprocessingResult(List<Sample> samples, long epochDurationMicros) {
+    }
+
     private static final int featureCount = 98;
     private static final int downSamplingFactor = 10;
     static final int epochSize = 600;
@@ -48,11 +51,11 @@ public class PosturePreprocessor {
         this.gyroZ = gyroZ;
     }
 
-    public List<Sample> preprocess(long startTimeMicros, long sampleTimePeriodMicros) {
+    public PreprocessingResult preprocess(long startTimeMicros, long sampleTimePeriodMicros) {
         // Check null reference
         if (mxr == null || myr == null || mzr == null || gyroX == null || gyroY == null || gyroZ == null) {
             logger.error("Motion data is invalid. Stop preprocessing.");
-            return List.of();
+            return new PreprocessingResult(List.of(), 0);
         }
 
         // Number of raw motion samples and fs
@@ -64,7 +67,7 @@ public class PosturePreprocessor {
         if (myr.length != sampleSize || mzr.length != sampleSize ||
                 gyroX.length != sampleSize || gyroY.length != sampleSize || gyroZ.length != sampleSize) {
             logger.error("Motion data is invalid. Stop preprocessing.");
-            return List.of();
+            return new PreprocessingResult(List.of(), 0);
         }
 
         // Preprocess epochs
@@ -88,7 +91,8 @@ public class PosturePreprocessor {
         }
 
         logger.info("Preprocessing has finished.");
-        return List.of(features);
+        long epochDurationMicros = samplingTimeMicros * epochSize;
+        return new PreprocessingResult(List.of(features), epochDurationMicros);
     }
 
     private void lowPassFilterAndResample() {

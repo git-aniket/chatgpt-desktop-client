@@ -62,7 +62,7 @@ public class PostureClassifier {
 
             long startTimeMicros = cod.getStartTimeInUS();
             int sampleTimeMicros = motionData.sampleTimeMicros();
-            var features = preprocessor.preprocess(startTimeMicros, sampleTimeMicros);
+            var preprocessingResult = preprocessor.preprocess(startTimeMicros, sampleTimeMicros);
 
             // To predict based on a feature dataset (not on preprocessor), use this:
             // var featuresFile = "/datasets/posture.98x1000.features.csv";
@@ -70,7 +70,8 @@ public class PostureClassifier {
             // features = dataSetGenerator.generate();
 
             // Make prediction
-            postureTimeline = PosturePredictor.predict(features);
+            postureTimeline = PosturePredictor.predict(preprocessingResult.samples(),
+                    preprocessingResult.epochDurationMicros());
         } catch (Exception e) {
             logger.error("An error occurred during posture classification: {}", e.getMessage());
             return 0;

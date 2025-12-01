@@ -56,11 +56,13 @@ public class RawToPosturePeriodTest {
         preprocessor.setGyroSamples(gyroX, gyroY, gyroZ);
 
         long startTime = System.currentTimeMillis();
-        List<Sample> features = preprocessor.preprocess(0, 1_000);
+        var preprocessingResult = preprocessor.preprocess(0, 1_000);
+        List<Sample> features = preprocessingResult.samples();
         System.out.printf("Preprocess time: %d ms%n", System.currentTimeMillis() - startTime);
 
         startTime = System.currentTimeMillis();
-        List<PostureClassifier.PosturePeriod> postureTimeline = PosturePredictor.predict(features);
+        List<PostureClassifier.PosturePeriod> postureTimeline = PosturePredictor.predict(features,
+                preprocessingResult.epochDurationMicros());
         System.out.printf("Prediction time: %d ms%n", System.currentTimeMillis() - startTime);
 
         System.out.printf("Checking data set: %s%n", postureFile01);

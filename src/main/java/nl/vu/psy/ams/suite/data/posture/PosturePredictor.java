@@ -20,7 +20,8 @@ public class PosturePredictor {
 
     private static final Logger logger = LogManager.getLogger(PosturePredictor.class);
 
-    public static List<PosturePeriod> predict(List<Sample> samples) throws IOException, XGBoostError {
+    public static List<PosturePeriod> predict(List<Sample> samples, long epochDurationMicros)
+            throws IOException, XGBoostError {
         try (InputStream modelStream = PosturePredictor.class.getResourceAsStream(modelFile)) {
             if (modelStream == null) {
                 String message = String.format("Model file [%s] not found in JAR!", modelFile);
@@ -62,7 +63,7 @@ public class PosturePredictor {
             }
 
             // Calculate timeline
-            return calculatePostureTimeLine(postureSequence, samples);
+            return calculatePostureTimeLine(postureSequence, samples, epochDurationMicros);
         }
     }
 
@@ -102,7 +103,8 @@ public class PosturePredictor {
         }
     }
 
-    static List<PosturePeriod> calculatePostureTimeLine(List<Posture> postureSequence, List<Sample> samples)
+    static List<PosturePeriod> calculatePostureTimeLine(List<Posture> postureSequence, List<Sample> samples,
+            long epochDurationMicros)
             throws XGBoostError {
         // Check dimensions
         if (postureSequence.size() != samples.size()) {
@@ -121,7 +123,8 @@ public class PosturePredictor {
         for (int i = 0; i < postureSequence.size(); i++) {
             var posture = postureSequence.get(i);
             if (posture != currentPosture || i == postureSequence.size() - 1) {
-                double endTime = transformTime(samples.get(i).time());
+                // End time should be the END of the current epoch, not the start of the next
+                double endTime = transformTime(samples.get(i).time() + epochDurationMicros);
                 result.add(new PosturePeriod(startTime, endTime, currentPosture));
 
                 currentPosture = posture;

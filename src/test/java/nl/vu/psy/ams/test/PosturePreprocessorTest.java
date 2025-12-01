@@ -78,7 +78,8 @@ public class PosturePreprocessorTest {
         preprocessor.setGyroSamples(gyroX, gyroY, gyroZ);
 
         long startTime = System.currentTimeMillis();
-        List<Sample> features = preprocessor.preprocess(0, 1_000);
+        var result = preprocessor.preprocess(0, 1_000);
+        List<Sample> features = result.samples();
         long duration = System.currentTimeMillis() - startTime;
 
         System.out.println("\nPreprocessor sample size: " + numRows);

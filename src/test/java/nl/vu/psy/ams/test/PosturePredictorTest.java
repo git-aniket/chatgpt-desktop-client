@@ -35,8 +35,8 @@ public class PosturePredictorTest {
         System.out.printf("Checking data set: %s%n", posturesFile);
         var features = new DataSetGenerator(featuresFile, 0, 6).generate();
 
-        // Do prediction
-        List<PostureClassifier.PosturePeriod> postureTimeline = PosturePredictor.predict(features);
+        // Do prediction (epoch duration is 6 seconds = 6,000,000 microseconds)
+        List<PostureClassifier.PosturePeriod> postureTimeline = PosturePredictor.predict(features, 6_000_000L);
 
         // Check accuracy
         boolean success = true;
