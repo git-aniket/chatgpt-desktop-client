@@ -1,0 +1,126 @@
+# Track ONLY .java files in the project
+
+# Ignore everything at the root level
+/*
+
+# Allow .gitignore and src/ directory
+!.gitignore
+!src/
+
+# Within src/, ignore everything first
+src/*
+
+# Then allow only the directory structure needed for .java files
+!src/main/
+!src/test/
+src/main/*
+src/test/*
+!src/main/java/
+!src/test/java/
+
+# Ignore all resources, models, datasets, etc.
+src/main/resources/
+src/test/resources/
+
+# Explicitly ignore build and IDE directories
+build/
+.gradle/
+bin/
+bin2/
+.idea/
+.classpath
+.project
+.settings/
+.vscode/
+
+# Ignore platform-specific directories
+Mac_Platform/
+Windows32/
+Windows64/
+Windows8/
+
+# Ignore third-party code
+blePackage/
+licenses/
+lib/
+libdll/
+libdll64/
+libold/
+
+# Ignore compiled and binary files
+*.class
+*.jar
+*.war
+*.ear
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Ignore logs and temporary files
+*.log
+*.tmp
+*.temp
+*.bak
+*.bak2
+*.swp
+*.DS_Store
+*.LCK
+
+# Ignore archives
+*.gz
+*.zip
+*.tar
+*.rar
+*.7z
+
+# Ignore all non-Java files in src/
+src/**/*.png
+src/**/*.jpg
+src/**/*.jpeg
+src/**/*.gif
+src/**/*.ico
+src/**/*.model
+src/**/*.onnx
+src/**/*.csv
+src/**/*.txt
+src/**/*.py
+src/**/*.xml
+src/**/*.json
+src/**/*.properties
+src/**/*.md
+src/**/LICENSE
+src/**/README
+
+# Ignore specific files and directories
+date.txt
+curRevB.txt
+revision.txt
+AmsSuite_debug.launch
+AmsSuite.launch
+VUDAMS/
+.git_bak/
+temp/
+docs/
+gradle/
+gradlew
+gradlew.bat
+
+# Ignore test data files
+*.bdf
+*.edf
+*.dmg
+
+# Ignore documentation and config files at root
+*.html
+*.xml
+*.txt
+*.properties
+*.json
+*.nsi
+*.nsh
+*.url
+*.bat
+*.sh
+*.command
+*.gradle.kts
