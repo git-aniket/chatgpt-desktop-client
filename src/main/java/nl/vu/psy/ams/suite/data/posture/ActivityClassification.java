@@ -190,19 +190,14 @@ public class ActivityClassification extends Thread {
      * Uses simple calculation like PostureClassifier, with optional tick
      * correction.
      * 
-     * @param startSampleInChunk Start sample index within current chunk
-     * @param endSampleInChunk   End sample index within current chunk
-     * @param chunkno            Current chunk number
-     * @param sampleTimeMicros   Microseconds per sample
-     * @param globalStartUS      Global start time in microseconds
+     * @param startSampleAbsolute Absolute start sample index
+     * @param endSampleAbsolute   Absolute end sample index
+     * @param sampleTimeMicros    Microseconds per sample
+     * @param globalStartUS       Global start time in microseconds
      * @return long[] {startUS, endUS}
      */
-    private static long[] calculateTimestamps(int startSampleInChunk, int endSampleInChunk,
-            int chunkno, int sampleTimeMicros, long globalStartUS) {
-        // Calculate absolute sample indices
-        long startSampleAbsolute = startSampleInChunk + (long) (chunkno * size / 4);
-        long endSampleAbsolute = endSampleInChunk + (long) (chunkno * size / 4);
-
+    private static long[] calculateTimestamps(long startSampleAbsolute, long endSampleAbsolute,
+            int sampleTimeMicros, long globalStartUS) {
         // Optional tick correction if TicksM.bin exists
         if (tickFile != null && tickFile.exists()) {
             startSampleAbsolute = correctForTicks(startSampleAbsolute);
@@ -464,15 +459,18 @@ public class ActivityClassification extends Thread {
                 long globalStartUS = CurrentOpenData.getInstance().getStartTimeInUS();
                 int sampleTimeMicros = 1000; // 1000 Hz = 1000 microseconds per sample
 
+                // Calculate absolute sample index for this chunk
+                long startSampleAbsolute = (long) (chunkno * size / 4);
+
                 final int FsLocal = SAMPLING_FREQUENCY; // 1000 Hz
-                int[] stepLocations = StepDetector.getInstance().detectSteps(dx, dy, dz, chunkno,
+                int[] stepLocations = StepDetector.getInstance().detectSteps(dx, dy, dz, startSampleAbsolute,
                         ActivityClassification::correctForTicks);
 
                 // 1) Run analyseMotility FIRST (computes MET/MAD/Speech and prepares fused
                 // posture)
 
                 analyseMotility(sampMX, sampMY, sampMZ, stepLocations, sampTemp, sampPres, 1, threshold, YPosThreshold,
-                        fcLying, fc2, fcAlt, chunkno);
+                        fcLying, fc2, fcAlt, startSampleAbsolute);
 
                 // 2) Stairs labels (5 s epochs) — keep as a separate label stream
                 int EPOCH_SAMPLES = 5 * FsLocal; // 5-second epochs for stairs
@@ -486,8 +484,10 @@ public class ActivityClassification extends Thread {
                     if (endSample < startSample)
                         continue;
 
-                    long[] timestamps = calculateTimestamps(startSample, endSample, chunkno,
-                            sampleTimeMicros, globalStartUS);
+                    // Calculate absolute sample indices
+                    long startAbs = startSample + startSampleAbsolute;
+                    long endAbs = endSample + startSampleAbsolute;
+                    long[] timestamps = calculateTimestamps(startAbs, endAbs, sampleTimeMicros, globalStartUS);
                     long startUS = timestamps[0];
                     long endUS = timestamps[1];
 
@@ -509,8 +509,10 @@ public class ActivityClassification extends Thread {
                     if (endSample < startSample)
                         continue;
 
-                    long[] timestamps = calculateTimestamps(startSample, endSample, chunkno,
-                            sampleTimeMicros, globalStartUS);
+                    // Calculate absolute sample indices
+                    long startAbs = startSample + startSampleAbsolute;
+                    long endAbs = endSample + startSampleAbsolute;
+                    long[] timestamps = calculateTimestamps(startAbs, endAbs, sampleTimeMicros, globalStartUS);
                     long startUS = timestamps[0];
                     long endUS = timestamps[1];
 
@@ -1114,7 +1116,8 @@ public class ActivityClassification extends Thread {
      */
     @Deprecated
     public static int[] getStepsNuovo(double[] accelX, double[] accelY, double[] accelZ) {
-        return StepDetector.getInstance().detectSteps(accelX, accelY, accelZ, chunkno,
+        // This deprecated method doesn't have chunk context, so assume start at 0
+        return StepDetector.getInstance().detectSteps(accelX, accelY, accelZ, 0L,
                 ActivityClassification::correctForTicks);
     }
 
@@ -1238,7 +1241,7 @@ public class ActivityClassification extends Thread {
     public static double analyseMotility(int[] sampMX, int[] sampMY, int[] sampMZ, int[] stepLocations,
             double sampTemp[], double sampPres[],
             int analysisWindowSize, double threshold, double thresholdLow, FileChannel fosLying,
-            FileChannel fosCat, FileChannel fosAlt, int chunkno) {
+            FileChannel fosCat, FileChannel fosAlt, long startSampleAbsolute) {
 
         // Use identical calibrated acceleration (counts -> m/s^2) as step detection
         // Get per-axis channel calibration
@@ -1262,8 +1265,11 @@ public class ActivityClassification extends Thread {
 
         // **********************************************************************/
 
-        long startTime = (chunkno * size / 4);
-        startTime = correctForTicks(startTime);
+        // Use absolute sample index directly, with optional tick correction
+        long startTime = startSampleAbsolute;
+        if (tickFile != null && tickFile.exists()) {
+            startTime = correctForTicks(startTime);
+        }
 
         PhysicalActivityCalculator PAcalc = PhysicalActivityCalculator.getInstance();
         PAcalc.setAccelerometerData(sampleMXDouble, sampleMYDouble, sampleMZDouble);

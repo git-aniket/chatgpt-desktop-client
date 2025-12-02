@@ -38,14 +38,14 @@ public class StepDetector {
     /**
      * Detect steps in the given accelerometer data.
      * 
-     * @param accelX        X-axis acceleration in m/s²
-     * @param accelY        Y-axis acceleration in m/s²
-     * @param accelZ        Z-axis acceleration in m/s²
-     * @param chunkNumber   Current chunk number for time offset calculation
-     * @param tickCorrector Function to correct for ticks (can be null)
+     * @param accelX              X-axis acceleration in m/s²
+     * @param accelY              Y-axis acceleration in m/s²
+     * @param accelZ              Z-axis acceleration in m/s²
+     * @param startSampleAbsolute Absolute sample index where this data starts
+     * @param tickCorrector       Function to correct for ticks (can be null)
      * @return Array of step locations (1 = step, 0 = no step)
      */
-    public int[] detectSteps(double[] accelX, double[] accelY, double[] accelZ, int chunkNumber,
+    public int[] detectSteps(double[] accelX, double[] accelY, double[] accelZ, long startSampleAbsolute,
             TickCorrector tickCorrector) {
         if (accelX == null || accelY == null || accelZ == null) {
             throw new IllegalArgumentException("Input arrays cannot be null");
@@ -176,10 +176,9 @@ public class StepDetector {
 
                 // Map decimated index -> original sample index
                 int origIdx = i * DECIMATE_FACTOR;
-                if (origIdx >= accelX.length)
-                    break;
-
-                long offsetSamples = origIdx + (long) (chunkNumber * CHUNK_SIZE / 4);
+                // Convert decimated index back to original 1000 Hz index, then add absolute
+                // offset
+                long offsetSamples = origIdx + startSampleAbsolute;
                 if (tickCorrector != null) {
                     offsetSamples = tickCorrector.correctForTicks(offsetSamples);
                 }
