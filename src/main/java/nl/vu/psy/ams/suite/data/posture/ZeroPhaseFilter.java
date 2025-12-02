@@ -132,8 +132,10 @@ public class ZeroPhaseFilter {
     /**
      * Apply zero-phase Butterworth low-pass filter using JDSP library.
      * This method pads the signal using reflection, applies forward and backward
-     * filtering
-     * to achieve zero-phase distortion, and then removes the padding.
+     * filtering to achieve zero-phase distortion, and then removes the padding.
+     * 
+     * Uses frequency-dependent padding to avoid edge effects and settling
+     * transients.
      *
      * @param signal Input signal to filter
      * @param order  Filter order
@@ -141,12 +143,15 @@ public class ZeroPhaseFilter {
      * @param Fs     Sampling frequency (Hz)
      * @return Filtered signal with zero phase distortion
      */
-    public static double[] zeroPhaseFilterLowPassFilterJDSP(double[] signal, int order, double cutOff, int Fs) {
-        // Determine padding length. A common heuristic is 3 times the filter order.
-        // Ensure padding length does not exceed the signal length to avoid issues with
-        // reflection.
-        int padlen = Math.min(signal.length - 1, 3 * order);
-        if (padlen <= 0) { // Handle very short signals or order 0
+    public static double[] zeroPhaseLowPassFilterJDSP(double[] signal, int order, double cutOff, int Fs) {
+        // Calculate padding based on filter settling time for proper edge handling
+        // Settling time ≈ 3/(2π × cutoff) seconds
+        // Padding should be ~3× settling time to avoid transients
+        double settlingTimeSec = 3.0 / (2.0 * Math.PI * cutOff);
+        int padlen = (int) Math.ceil(3.0 * settlingTimeSec * Fs);
+        // Cap at signal length - 1 to avoid issues
+        padlen = Math.min(padlen, signal.length - 1);
+        if (padlen <= 0) { // Handle very short signals
             padlen = 1; // Minimum padding
         }
 
@@ -190,8 +195,10 @@ public class ZeroPhaseFilter {
     /**
      * Apply zero-phase Butterworth high-pass filter using JDSP library.
      * This method pads the signal using reflection, applies forward and backward
-     * filtering
-     * to achieve zero-phase distortion, and then removes the padding.
+     * filtering to achieve zero-phase distortion, and then removes the padding.
+     * 
+     * Uses frequency-dependent padding to avoid edge effects and settling
+     * transients.
      *
      * @param signal Input signal to filter
      * @param order  Filter order
@@ -199,12 +206,15 @@ public class ZeroPhaseFilter {
      * @param Fs     Sampling frequency (Hz)
      * @return Filtered signal with zero phase distortion
      */
-    public static double[] zeroPhaseFilterHighPassFilterJDSP(double[] signal, int order, double cutOff, int Fs) {
-        // Determine padding length. A common heuristic is 3 times the filter order.
-        // Ensure padding length does not exceed the signal length to avoid issues with
-        // reflection.
-        int padlen = Math.min(signal.length - 1, 3 * order);
-        if (padlen <= 0) { // Handle very short signals or order 0
+    public static double[] zeroPhaseHighPassFilterJDSP(double[] signal, int order, double cutOff, int Fs) {
+        // Calculate padding based on filter settling time for proper edge handling
+        // Settling time ≈ 3/(2π × cutoff) seconds
+        // Padding should be ~3× settling time to avoid transients
+        double settlingTimeSec = 3.0 / (2.0 * Math.PI * cutOff);
+        int padlen = (int) Math.ceil(3.0 * settlingTimeSec * Fs);
+        // Cap at signal length - 1 to avoid issues
+        padlen = Math.min(padlen, signal.length - 1);
+        if (padlen <= 0) { // Handle very short signals
             padlen = 1; // Minimum padding
         }
 

@@ -81,15 +81,16 @@ public class ActivityClassification extends Thread {
     }
 
     private static final int size = 1200000; // 1048576; // 2^20
+
+    // Static buffers used by reduceSamplesize (currently unused but kept for
+    // potential future use)
     static ByteBuffer bb;
     static IntBuffer sb;
     static ByteBuffer obb;
     static IntBuffer osb;
     static int[] samp;
     static int[] outBuf;
-    static int[] tempBuf;
-    static double[] backBuffer = new double[4];
-    static double[] forBuffer = new double[4];
+
     // State variables for analysis
     // Tracks how many 5 Hz samples we've already written to altSm_debug.txt across
     // chunks
@@ -598,118 +599,62 @@ public class ActivityClassification extends Thread {
 
     }
 
-    // High pass filter for gravity removal
+    /**
+     * Apply zero-phase 4th-order Butterworth high-pass filter for gravity removal.
+     * Equivalent to MATLAB: [b,a] = butter(4, 0.005, 'high')
+     * 
+     * Uses ZeroPhaseFilter with frequency-dependent padding to avoid settling
+     * transients.
+     * 
+     * @param inFile  Input file containing integer samples
+     * @param outFile Output file for filtered samples
+     */
     public static void highPassFilterButt(File inFile, File outFile) {
-        int size = (int) inFile.length();
-        bb = ByteBuffer.allocateDirect(size);
-        obb = ByteBuffer.allocateDirect(size);
-        sb = bb.asIntBuffer();
-        osb = obb.asIntBuffer();
-
-        samp = new int[size / 4];
-        outBuf = new int[size / 4];
-        tempBuf = new int[size / 4];
-        // [b,a] = butter(4, 0.004, 'high'); cut-off 0.005 Hz
-        double[] b = new double[] { 0.983715174129757, -3.934860696519027, 5.902291044778541, -3.934860696519027,
-                0.983715174129757 };
-        double[] a = new double[] { 1.000000000000000, -3.967162595948849, 5.902025861490880, -3.902558784823241,
-                0.967695543813138 };
-
-        // long fL = inFile.length();
-        // JFrame frame = MainFrame.getInstance().getMainFrame();
-        // ProgressMonitor progress = new ProgressMonitor(frame, "Generating Filtered
-        // Mean Motility", null, 0, (int) fL);
-
         try {
-            filterForAndBackward(a, b, inFile, outFile); // , progress);
+            // Read all samples from input file
+            int numSamples = (int) (inFile.length() / 4); // 4 bytes per int
+            int[] samples = new int[numSamples];
+
+            try (FileInputStream fis = new FileInputStream(inFile);
+                    FileChannel channel = fis.getChannel()) {
+                ByteBuffer buffer = ByteBuffer.allocate(numSamples * 4);
+                channel.read(buffer);
+                buffer.flip();
+                buffer.asIntBuffer().get(samples);
+            }
+
+            // Convert int[] to double[] for filtering
+            double[] signal = new double[numSamples];
+            for (int i = 0; i < numSamples; i++) {
+                signal[i] = samples[i];
+            }
+
+            // Apply zero-phase high-pass filter
+            // ZeroPhaseFilter now uses proper frequency-dependent padding
+            final int ORDER = 4;
+            final double CUTOFF_HZ = 0.005;
+            final int SAMPLING_RATE = 1000; // Hz
+
+            double[] filtered = ZeroPhaseFilter.zeroPhaseHighPassFilterJDSP(
+                    signal, ORDER, CUTOFF_HZ, SAMPLING_RATE);
+
+            // Convert back to int[] and write to output file
+            int[] output = new int[numSamples];
+            for (int i = 0; i < numSamples; i++) {
+                output[i] = (int) Math.round(filtered[i]);
+            }
+
+            try (FileOutputStream fos = new FileOutputStream(outFile);
+                    FileChannel channel = fos.getChannel()) {
+                ByteBuffer buffer = ByteBuffer.allocate(numSamples * 4);
+                buffer.asIntBuffer().put(output);
+                buffer.limit(numSamples * 4);
+                channel.write(buffer);
+            }
+
         } catch (IOException e) {
             e.printStackTrace();
         }
-    }
-
-    static void filterForAndBackward(double[] a, double[] b, File sclFile, File tempFile) // , ProgressMonitor progress)
-            throws IOException {
-        int size = (int) sclFile.length();
-        FileInputStream fis = new FileInputStream(sclFile);
-        FileOutputStream fos = new FileOutputStream(tempFile);
-        FileChannel ifC = fis.getChannel();
-        FileChannel ofC = fos.getChannel();
-
-        int nRead = size;
-        int nOut;
-        double[] state = new double[4];
-        bb.position(0);
-        sb.position(0);
-        nRead = ifC.read(bb);
-        int nSRead = nRead / 4;
-        if (nRead < 1) {
-            ofC.close();
-            ifC.close();
-            fis.close();
-            fos.close();
-            return;
-        }
-        sb.get(samp, 0, nSRead);
-        for (int q = 0; q < nSRead; q++) {
-
-            double vl = samp[q];
-            double val = b[0] * vl + state[0];
-            state[0] = b[1] * vl + state[1] - a[1] * val;
-            state[1] = b[2] * vl + state[2] - a[2] * val;
-            state[2] = b[3] * vl + state[3] - a[3] * val;
-            state[3] = b[4] * vl - a[4] * val;
-
-            double newVal = val;
-            tempBuf[q] = (int) newVal;
-        }
-        nOut = nSRead;
-        double vl = tempBuf[nSRead - 1];
-        for (int q = 0; q < backBuffer.length; q++) {
-            backBuffer[q] = vl;
-        }
-        for (int q = 0; q < forBuffer.length; q++) {
-            forBuffer[q] = vl;
-        }
-        for (int q = 0; q < nSRead; q++) {
-
-            vl = tempBuf[nSRead - q - 1];
-
-            double val = vl * b[0];
-
-            for (int z = 0; z < b.length - 1; z++) {
-                val += backBuffer[z] * b[z + 1];
-            }
-
-            for (int z = 0; z < a.length - 1; z++) {
-                val -= forBuffer[z] * a[z + 1];
-            }
-
-            for (int z = 0; z < backBuffer.length - 1; z++) {
-                backBuffer[3 - z] = backBuffer[2 - z];
-            }
-
-            for (int z = 0; z < forBuffer.length - 1; z++) {
-                forBuffer[3 - z] = forBuffer[2 - z];
-            }
-
-            backBuffer[0] = vl;
-            forBuffer[0] = val;
-
-            double newVal = val;
-            outBuf[nSRead - q - 1] = (int) newVal;
-        }
-        nOut = nSRead;
-
-        obb.clear();
-        osb.clear();
-        osb.put(outBuf, 0, nOut);
-        obb.limit(4 * nOut);
-        ofC.write(obb);
-
-        ofC.close();
-        ifC.close();
-        fis.close();
-        fos.close();
     }
 
     // A function to get mean motility from acceleration data

@@ -66,9 +66,9 @@ public class StepDetector {
         final double AA_CUTOFF = 4.5; // < 5 Hz (new Nyquist after /100)
 
         // Use the unified zero-phase low-pass helper instead of manual fwd/bwd passes
-        double[] aaX = ZeroPhaseFilter.zeroPhaseFilterLowPassFilterJDSP(accelX, AA_ORDER, AA_CUTOFF, FS);
-        double[] aaY = ZeroPhaseFilter.zeroPhaseFilterLowPassFilterJDSP(accelY, AA_ORDER, AA_CUTOFF, FS);
-        double[] aaZ = ZeroPhaseFilter.zeroPhaseFilterLowPassFilterJDSP(accelZ, AA_ORDER, AA_CUTOFF, FS);
+        double[] aaX = ZeroPhaseFilter.zeroPhaseLowPassFilterJDSP(accelX, AA_ORDER, AA_CUTOFF, FS);
+        double[] aaY = ZeroPhaseFilter.zeroPhaseLowPassFilterJDSP(accelY, AA_ORDER, AA_CUTOFF, FS);
+        double[] aaZ = ZeroPhaseFilter.zeroPhaseLowPassFilterJDSP(accelZ, AA_ORDER, AA_CUTOFF, FS);
 
         // 2) DECIMATE anti-aliased signals
         Decimate decX = new Decimate(aaX, FS, true);
