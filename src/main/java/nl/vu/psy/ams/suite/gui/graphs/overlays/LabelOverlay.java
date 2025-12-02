@@ -598,10 +598,16 @@ public class LabelOverlay extends Overlay {
 		int drawH = (int) (h * fillFactor);
 		for (AmsLabel l : labels.getLabels()) {
 			if (mouseTime > l.getLeftTime() && mouseTime < l.getRightTime() && arg0.getY() < drawH) {
-				String labelText = "<html><b>Time:</b><br>";
-				labelText += Utils.getTimeFromUS(l.getLeftTime()) + " to " + Utils.getTimeFromUS(l.getRightTime())
-						+ "<br>";
-				labelText += "<b>Attributes:</b><br><table border=\"1\">";
+				// Calculate duration in microseconds and convert to milliseconds and seconds
+				double durationUS = l.getRightTime() - l.getLeftTime();
+				double durationMS = durationUS / 1000.0;
+				double durationS = durationMS / 1000.0;
+
+				String labelText = "<html><b>Label Times:</b><br>";
+				labelText += "<b>Start:</b> " + Utils.getTimeFromUS(l.getLeftTime()) + "<br>";
+				labelText += "<b>End:</b> " + Utils.getTimeFromUS(l.getRightTime()) + "<br>";
+				labelText += "<b>Duration:</b> " + String.format("%.2f ms / %.2f s", durationMS, durationS) + "<br>";
+				labelText += "<br><b>Attributes:</b><br><table border=\"1\">";
 				for (Map.Entry<String, String> entry : l.getAttributes().entrySet()) {
 					labelText += "<tr><td>" + entry.getKey() + ":</td><td>" + entry.getValue() + "</td></tr>";
 				}
@@ -678,7 +684,7 @@ public class LabelOverlay extends Overlay {
 		final ToolTipManager ttm = ToolTipManager.sharedInstance();
 		final int oldDelay = ttm.getInitialDelay();
 		ttm.setInitialDelay(0);
-		ttm.setDismissDelay(1000);
+		ttm.setDismissDelay(10000);
 		ttm.mouseMoved(event);
 
 		new Timer().schedule(new TimerTask() {
