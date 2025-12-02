@@ -169,11 +169,58 @@ public class ActivityClassification extends Thread {
         }
     }
 
+    /**
+     * Validate that required channels exist in the current open data.
+     * 
+     * @param channelIds Channel IDs to validate
+     * @return true if all channels exist, false otherwise
+     */
+    private static boolean validateRequiredChannels(String... channelIds) {
+        CurrentOpenData cod = CurrentOpenData.getInstance();
+        for (String channelId : channelIds) {
+            if (!cod.channelExists(channelId)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Calculate start and end timestamps for a sample range.
+     * Uses simple calculation like PostureClassifier, with optional tick
+     * correction.
+     * 
+     * @param startSampleInChunk Start sample index within current chunk
+     * @param endSampleInChunk   End sample index within current chunk
+     * @param chunkno            Current chunk number
+     * @param sampleTimeMicros   Microseconds per sample
+     * @param globalStartUS      Global start time in microseconds
+     * @return long[] {startUS, endUS}
+     */
+    private static long[] calculateTimestamps(int startSampleInChunk, int endSampleInChunk,
+            int chunkno, int sampleTimeMicros, long globalStartUS) {
+        // Calculate absolute sample indices
+        long startSampleAbsolute = startSampleInChunk + (long) (chunkno * size / 4);
+        long endSampleAbsolute = endSampleInChunk + (long) (chunkno * size / 4);
+
+        // Optional tick correction if TicksM.bin exists
+        if (tickFile != null && tickFile.exists()) {
+            startSampleAbsolute = correctForTicks(startSampleAbsolute);
+            endSampleAbsolute = correctForTicks(endSampleAbsolute);
+        }
+
+        // Simple timestamp calculation (like PostureClassifier)
+        long startUS = globalStartUS + (startSampleAbsolute * sampleTimeMicros / 1000);
+        long endUS = globalStartUS + (endSampleAbsolute * sampleTimeMicros / 1000);
+
+        return new long[] { startUS, endUS };
+    }
+
     public static void generateMeanMotilityFile() throws Exception {
         CurrentOpenData cod = CurrentOpenData.getInstance();
 
         // Check if required channels exist
-        if (!cod.channelExists("MXR") || !cod.channelExists("MYR") || !cod.channelExists("MZR")) {
+        if (!validateRequiredChannels("MXR", "MYR", "MZR")) {
             return;
         }
 
@@ -191,61 +238,26 @@ public class ActivityClassification extends Thread {
         cod.dirtyFiles.add(meanMotilityFileF);
         tickFile = new File(cod.getFilePath(), "TicksM.bin");
 
-        // Read filtered accelerometer files directly to get raw integer counts
+        // Read filtered accelerometer files using helper
         File fAccelX = new File(cod.getFilePath(), "FILTMXR.bin");
         File fAccelY = new File(cod.getFilePath(), "FILTMYR.bin");
         File fAccelZ = new File(cod.getFilePath(), "FILTMZR.bin");
 
-        // Read all data at once (direct reading, but as raw integers)
-        int[] sampMX, sampMY, sampMZ;
-        try (FileInputStream fisMX = new FileInputStream(fAccelX);
-                FileChannel chMX = fisMX.getChannel();
-                FileInputStream fisMY = new FileInputStream(fAccelY);
-                FileChannel chMY = fisMY.getChannel();
-                FileInputStream fisMZ = new FileInputStream(fAccelZ);
-                FileChannel chMZ = fisMZ.getChannel()) {
+        AccelerometerDataReader.AccelData accelData = AccelerometerDataReader.readAllAsIntegers(
+                fAccelX, fAccelY, fAccelZ);
 
-            int numSamples = (int) (fAccelX.length() / 4); // 4 bytes per int
-            ByteBuffer buffer = ByteBuffer.allocate(numSamples * 4);
-
-            // Read X
-            chMX.read(buffer);
-            buffer.flip();
-            sampMX = new int[numSamples];
-            buffer.asIntBuffer().get(sampMX);
-
-            // Read Y
-            buffer.clear();
-            chMY.read(buffer);
-            buffer.flip();
-            sampMY = new int[numSamples];
-            buffer.asIntBuffer().get(sampMY);
-
-            // Read Z
-            buffer.clear();
-            chMZ.read(buffer);
-            buffer.flip();
-            sampMZ = new int[numSamples];
-            buffer.asIntBuffer().get(sampMZ);
-        }
-
-        // Compute magnitude: sqrt(MX² + MY² + MZ²)
-        int numSamples = sampMX.length;
-        int[] meanMotility = new int[numSamples];
-
-        for (int i = 0; i < numSamples; i++) {
-            meanMotility[i] = (int) Math.sqrt(sampMX[i] * sampMX[i] + sampMY[i] * sampMY[i] + sampMZ[i] * sampMZ[i]);
-        }
+        // Compute magnitude using helper
+        int[] meanMotility = AccelerometerDataReader.calculateMagnitude(accelData);
 
         // Write to binary file
         try (FileOutputStream fos = new FileOutputStream(meanMotilityFile);
                 FileChannel channel = fos.getChannel()) {
 
-            ByteBuffer buffer = ByteBuffer.allocate(numSamples * 4);
+            ByteBuffer buffer = ByteBuffer.allocate(accelData.numSamples * 4);
             IntBuffer intBuffer = buffer.asIntBuffer();
             intBuffer.put(meanMotility);
             buffer.position(0);
-            buffer.limit(numSamples * 4);
+            buffer.limit(accelData.numSamples * 4);
             channel.write(buffer);
         }
 
@@ -305,10 +317,10 @@ public class ActivityClassification extends Thread {
         CurrentOpenData cod = CurrentOpenData.getInstance();
         File tempDir = cod.getFilePath();
         boolean pressureAvailable = true;
-        if (!cod.channelExists("MXR") || !cod.channelExists("MYR") || !cod.channelExists("MZR")) {
+        if (!validateRequiredChannels("MXR", "MYR", "MZR")) {
             return;
         }
-        if (!cod.channelExists("P_sc") || !cod.channelExists("T_sc")) {
+        if (!validateRequiredChannels("P_sc", "T_sc")) {
             pressureAvailable = false;
         }
         File catFile = new File(cod.getFilePath(), "Activity.bin");
@@ -348,15 +360,10 @@ public class ActivityClassification extends Thread {
         if (tickFile.exists())
             is = new RandomAccessFile(tickFile, "r");
 
-        // call python script in for loop to generate activity classification
         ByteBuffer bbMX = ByteBuffer.allocateDirect(size);
-        IntBuffer sbMX = bbMX.asIntBuffer();
         ByteBuffer bbP = ByteBuffer.allocateDirect(size * 2 / 200); // dw divider pressure sensor
         DoubleBuffer sbP = bbP.asDoubleBuffer();
 
-        int[] sampMX = new int[size / 4];
-        int[] sampMY = new int[size / 4];
-        int[] sampMZ = new int[size / 4];
         double[] sampTemp = new double[size / 4 / 200];
         double[] sampPres = new double[size / 4 / 200];
 
@@ -403,32 +410,19 @@ public class ActivityClassification extends Thread {
 
         // analyse data in a loop
         for (long i = 0; i < fL; i += nRead) {
-            bbMX.position(0);
-            sbMX.position(0);
-            nRead = ifMX.read(bbMX);
-            int nSRead = nRead / 4;
-            if (nRead < 1) {
-                break;
-            }
-            sbMX.get(sampMX, 0, nSRead);
+            // Read accelerometer chunk using helper
+            AccelerometerDataReader.AccelData accelData = AccelerometerDataReader.readChunkAsIntegers(
+                    ifMX, ifMY, ifMZ, bbMX, size / 4);
 
-            bbMX.position(0);
-            sbMX.position(0);
-            nRead = ifMY.read(bbMX);
-            nSRead = nRead / 4;
-            if (nRead < 1) {
-                break;
+            if (accelData == null) {
+                break; // End of file
             }
-            sbMX.get(sampMY, 0, nSRead);
 
-            bbMX.position(0);
-            sbMX.position(0);
-            nRead = ifMZ.read(bbMX);
-            nSRead = nRead / 4;
-            if (nRead < 1) {
-                break;
-            }
-            sbMX.get(sampMZ, 0, nSRead);
+            int[] sampMX = accelData.x;
+            int[] sampMY = accelData.y;
+            int[] sampMZ = accelData.z;
+            int nSRead = accelData.numSamples;
+            nRead = nSRead * 4; // Update nRead for loop increment
 
             int nSReadP = 0;
             if (pressureAvailable) {
@@ -468,7 +462,7 @@ public class ActivityClassification extends Thread {
 
                 // Use the same calibrated arrays for both steps and posture
                 long globalStartUS = CurrentOpenData.getInstance().getStartTimeInUS();
-                long firstTickMs = CurrentOpenData.getInstance().getStarts().get(0).getDwClockTick_ms();
+                int sampleTimeMicros = 1000; // 1000 Hz = 1000 microseconds per sample
 
                 final int FsLocal = SAMPLING_FREQUENCY; // 1000 Hz
                 int[] stepLocations = StepDetector.getInstance().detectSteps(dx, dy, dz, chunkno,
@@ -492,11 +486,10 @@ public class ActivityClassification extends Thread {
                     if (endSample < startSample)
                         continue;
 
-                    long correctedStart = correctForTicks(startSample + (long) (chunkno * size / 4));
-                    long correctedEnd = correctForTicks(endSample + (long) (chunkno * size / 4));
-
-                    long startUS = globalStartUS + (correctedStart - firstTickMs) * 1000L;
-                    long endUS = globalStartUS + (correctedEnd - firstTickMs) * 1000L;
+                    long[] timestamps = calculateTimestamps(startSample, endSample, chunkno,
+                            sampleTimeMicros, globalStartUS);
+                    long startUS = timestamps[0];
+                    long endUS = timestamps[1];
 
                     stairsLabelsToAdd.add(AmsLabel.generateStairsLabel(startUS, endUS, sChunk[e]));
                     allPostureLabels.add(sChunk[e]);
@@ -516,11 +509,10 @@ public class ActivityClassification extends Thread {
                     if (endSample < startSample)
                         continue;
 
-                    long correctedStart = correctForTicks(startSample + (long) (chunkno * size / 4));
-                    long correctedEnd = correctForTicks(endSample + (long) (chunkno * size / 4));
-
-                    long startUS = globalStartUS + (correctedStart - firstTickMs) * 1000L;
-                    long endUS = globalStartUS + (correctedEnd - firstTickMs) * 1000L;
+                    long[] timestamps = calculateTimestamps(startSample, endSample, chunkno,
+                            sampleTimeMicros, globalStartUS);
+                    long startUS = timestamps[0];
+                    long endUS = timestamps[1];
 
                     postureLabelsToAdd.add(AmsLabel.generatePostureLabel(startUS, endUS, postureChunk[e]));
                     allPostureLabels.add(postureChunk[e]);
