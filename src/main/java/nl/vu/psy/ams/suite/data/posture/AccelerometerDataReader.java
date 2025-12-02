@@ -1,5 +1,7 @@
 package nl.vu.psy.ams.suite.data.posture;
 
+import org.apache.commons.math3.util.FastMath;
+
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -136,7 +138,7 @@ public class AccelerometerDataReader {
             int x = accelData.x[i];
             int y = accelData.y[i];
             int z = accelData.z[i];
-            magnitude[i] = (int) Math.sqrt(x * x + y * y + z * z);
+            magnitude[i] = (int) FastMath.sqrt(x * x + y * y + z * z);
         }
         return magnitude;
     }

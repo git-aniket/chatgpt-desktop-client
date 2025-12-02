@@ -17,7 +17,6 @@ public class StepDetector {
 
     private static StepDetector instance;
     private static final int SAMPLING_FREQUENCY = 1000; // Hz
-    private static final int CHUNK_SIZE = 1200000; // Default chunk size
 
     /**
      * Get the singleton instance of StepDetector.

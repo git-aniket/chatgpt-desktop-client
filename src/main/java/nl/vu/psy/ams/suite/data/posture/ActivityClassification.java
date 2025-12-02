@@ -90,12 +90,12 @@ public class ActivityClassification extends Thread {
     static int[] tempBuf;
     static double[] backBuffer = new double[4];
     static double[] forBuffer = new double[4];
-    static boolean isFirstChunk = true;
+    // State variables for analysis
     // Tracks how many 5 Hz samples we've already written to altSm_debug.txt across
     // chunks
     static long altSmDebugSamplesWritten = 0L;
     static double firstVal;
-    static int chunkno = 0;
+
     static int altitudeCount = 0;
     static double altitudeSum = 0;
     static double avMeanMotility = 0;
@@ -355,24 +355,50 @@ public class ActivityClassification extends Thread {
         if (tickFile.exists())
             is = new RandomAccessFile(tickFile, "r");
 
-        ByteBuffer bbMX = ByteBuffer.allocateDirect(size);
-        ByteBuffer bbP = ByteBuffer.allocateDirect(size * 2 / 200); // dw divider pressure sensor
-        DoubleBuffer sbP = bbP.asDoubleBuffer();
+        // === DIRECT READING: Load all data at once ===
+        // Read all accelerometer data
+        AccelerometerDataReader.AccelData allAccelData = AccelerometerDataReader.readAllAsIntegers(
+                fAccelX, fAccelY, fAccelZ);
 
-        double[] sampTemp = new double[size / 4 / 200];
-        double[] sampPres = new double[size / 4 / 200];
+        int[] sampMX = allAccelData.x;
+        int[] sampMY = allAccelData.y;
+        int[] sampMZ = allAccelData.z;
+        int totalSamples = allAccelData.numSamples;
 
-        // read binary files
-        long fL = fAccelX.length();
-        int nRead = 0;
+        // Read all pressure/temperature data if available
+        double[] allSampTemp = null;
+        double[] allSampPres = null;
+        if (pressureAvailable) {
+            // Pressure/temperature are sampled at 200x slower rate
+            int pressureSamples = totalSamples / 200;
+            allSampTemp = new double[pressureSamples];
+            allSampPres = new double[pressureSamples];
 
-        FileInputStream fisMX = new FileInputStream(fAccelX);
-        FileChannel ifMX = fisMX.getChannel();
-        FileInputStream fisMY = new FileInputStream(fAccelY);
-        FileChannel ifMY = fisMY.getChannel();
-        FileInputStream fisMZ = new FileInputStream(fAccelZ);
-        FileChannel ifMZ = fisMZ.getChannel();
+            try (FileInputStream fisTemp = new FileInputStream(temperatureFile);
+                    FileChannel ifTemp = fisTemp.getChannel();
+                    FileInputStream fisPres = new FileInputStream(pressureFile);
+                    FileChannel ifPres = fisPres.getChannel()) {
 
+                ByteBuffer bbP = ByteBuffer.allocateDirect(pressureSamples * 8);
+                DoubleBuffer sbP = bbP.asDoubleBuffer();
+
+                // Read temperature
+                bbP.clear();
+                sbP.clear();
+                ifTemp.read(bbP);
+                bbP.flip();
+                sbP.get(allSampTemp);
+
+                // Read pressure
+                bbP.clear();
+                sbP.clear();
+                ifPres.read(bbP);
+                bbP.flip();
+                sbP.get(allSampPres);
+            }
+        }
+
+        // Setup output file channels
         FileOutputStream fos2 = null, fosLying = null, fosAlt = null;
         FileChannel fc2 = null, fcLying = null, fcAlt = null;
         if (pressureAvailable) {
@@ -383,172 +409,103 @@ public class ActivityClassification extends Thread {
             fosAlt = new FileOutputStream(AltitudeFile);
             fcAlt = fosAlt.getChannel();
         }
-        FileInputStream fisTemp = null;
-        FileChannel ifTemp = null;
-        FileInputStream fisPres = null;
-        FileChannel ifPres = null;
-        if (pressureAvailable) {
-            fisTemp = new FileInputStream(temperatureFile);
-            ifTemp = fisTemp.getChannel();
-            fisPres = new FileInputStream(pressureFile);
-            ifPres = fisPres.getChannel();
-        }
+
         int rawThreshold = AppSettings.getInstance().getIntProperty(Settings.LYINGTHRESHOLD);
         double threshold = (rawThreshold - chanM.getRealConstant()) / chanM.getRealSlope() / 1000.0;
         double YPosThreshold = (400 - chanM.getRealConstant()) / chanM.getRealSlope() / 1000.0;
-        isFirstChunk = true;
-        // Channel calibration for counts -> m/s^2 conversion (reuse per chunk)
+
+        // Channel calibration for counts -> m/s^2 conversion
         Ams7fsChannelInfo chanX = cod.getChannelInfoFromID("MXR");
         Ams7fsChannelInfo chanY = cod.getChannelInfoFromID("MYR");
         Ams7fsChannelInfo chanZ = cod.getChannelInfoFromID("MZR");
         CurrentOpenData.getInstance().getPostureLabels().clear();
 
-        // analyse data in a loop
-        for (long i = 0; i < fL; i += nRead) {
-            // Read accelerometer chunk using helper
-            AccelerometerDataReader.AccelData accelData = AccelerometerDataReader.readChunkAsIntegers(
-                    ifMX, ifMY, ifMZ, bbMX, size / 4);
+        // === PROCESS ALL DATA AT ONCE ===
+        if (pressureAvailable) {
+            // Convert raw counts to physical units (m/s^2)
+            double[] dx = MotionDataUtils.toMs2(sampMX, chanX);
+            double[] dy = MotionDataUtils.toMs2(sampMY, chanY);
+            double[] dz = MotionDataUtils.toMs2(sampMZ, chanZ);
 
-            if (accelData == null) {
-                break; // End of file
+            long globalStartUS = CurrentOpenData.getInstance().getStartTimeInUS();
+            int sampleTimeMicros = 1000; // 1000 Hz = 1000 microseconds per sample
+
+            final int FsLocal = SAMPLING_FREQUENCY; // 1000 Hz
+
+            // Detect steps for entire dataset (starts at sample 0)
+            int[] stepLocations = StepDetector.getInstance().detectSteps(dx, dy, dz, 0L,
+                    ActivityClassification::correctForTicks);
+
+            // Run analyseMotility for entire dataset
+            analyseMotility(sampMX, sampMY, sampMZ, stepLocations, allSampTemp, allSampPres, 1, threshold,
+                    YPosThreshold,
+                    fcLying, fc2, fcAlt, 0L);
+
+            // 2) Stairs labels (5 s epochs)
+            int EPOCH_SAMPLES = 5 * FsLocal; // 5-second epochs for stairs
+            AltitudeAnalyser.AltitudeAnalysisResult result = AltitudeAnalyser.getInstance()
+                    .analyseAltitudeChange(allSampPres, stepLocations, 5);
+            String[] sChunk = result.labels;
+            java.util.List<AmsLabel> stairsLabelsToAdd = new java.util.ArrayList<>();
+            for (int e = 0; e < sChunk.length; e++) {
+                long startSample = (long) e * EPOCH_SAMPLES;
+                long endSample = Math.min(totalSamples, startSample + EPOCH_SAMPLES) - 1;
+                if (endSample < startSample)
+                    continue;
+
+                long[] timestamps = calculateTimestamps(startSample, endSample, sampleTimeMicros, globalStartUS);
+                long startUS = timestamps[0];
+                long endUS = timestamps[1];
+
+                stairsLabelsToAdd.add(AmsLabel.generateStairsLabel(startUS, endUS, sChunk[e]));
+                allPostureLabels.add(sChunk[e]);
             }
+            CurrentOpenData.getInstance().getStairsLabels().getLabels().addAll(stairsLabelsToAdd);
 
-            int[] sampMX = accelData.x;
-            int[] sampMY = accelData.y;
-            int[] sampMZ = accelData.z;
-            int nSRead = accelData.numSamples;
-            nRead = nSRead * 4; // Update nRead for loop increment
+            // 3) Posture labels (10 s epochs)
+            EPOCH_SAMPLES = 10 * FsLocal; // 10-second epochs
+            java.util.List<String> fusedList = getLastFusedPosture10s();
+            String[] postureChunk = fusedList.toArray(new String[0]);
 
-            int nSReadP = 0;
-            if (pressureAvailable) {
-                bbP.position(0);
-                sbP.position(0);
-                int nReadP = ifTemp.read(bbP);
-                nSReadP = nReadP / 8;
-                if (nReadP < 1) {
-                    break;
-                }
-                sbP.get(sampTemp, 0, nSReadP);
-                bbP.position(0);
-                sbP.position(0);
-                nReadP = ifPres.read(bbP);
-                nSReadP = nReadP / 8;
-                if (nReadP < 1) {
-                    break;
-                }
-                sbP.get(sampPres, 0, nSReadP);
+            java.util.List<AmsLabel> postureLabelsToAdd = new java.util.ArrayList<>();
+            for (int e = 0; e < postureChunk.length; e++) {
+                long startSample = (long) e * EPOCH_SAMPLES;
+                long endSample = Math.min(totalSamples, startSample + EPOCH_SAMPLES) - 1;
+                if (endSample < startSample)
+                    continue;
+
+                long[] timestamps = calculateTimestamps(startSample, endSample, sampleTimeMicros, globalStartUS);
+                long startUS = timestamps[0];
+                long endUS = timestamps[1];
+
+                postureLabelsToAdd.add(AmsLabel.generatePostureLabel(startUS, endUS, postureChunk[e]));
+                allPostureLabels.add(postureChunk[e]);
             }
-            // check size of sampMX to be equal to size of nSRead
-            if (sampMX.length != nSRead) {
-                sampMX = Arrays.copyOf(sampMX, nSRead);
-                sampMY = Arrays.copyOf(sampMY, nSRead);
-                sampMZ = Arrays.copyOf(sampMZ, nSRead);
-                if (pressureAvailable) {
-                    sampPres = Arrays.copyOf(sampPres, nSReadP);
-                    sampTemp = Arrays.copyOf(sampTemp, nSReadP);
-                }
-            }
-
-            if (pressureAvailable) {
-                // Convert raw counts to physical units (m/s^2) once per chunk
-                double[] dx = MotionDataUtils.toMs2(sampMX, chanX);
-                double[] dy = MotionDataUtils.toMs2(sampMY, chanY);
-                double[] dz = MotionDataUtils.toMs2(sampMZ, chanZ);
-
-                // Use the same calibrated arrays for both steps and posture
-                long globalStartUS = CurrentOpenData.getInstance().getStartTimeInUS();
-                int sampleTimeMicros = 1000; // 1000 Hz = 1000 microseconds per sample
-
-                // Calculate absolute sample index for this chunk
-                long startSampleAbsolute = (long) (chunkno * size / 4);
-
-                final int FsLocal = SAMPLING_FREQUENCY; // 1000 Hz
-                int[] stepLocations = StepDetector.getInstance().detectSteps(dx, dy, dz, startSampleAbsolute,
-                        ActivityClassification::correctForTicks);
-
-                // 1) Run analyseMotility FIRST (computes MET/MAD/Speech and prepares fused
-                // posture)
-
-                analyseMotility(sampMX, sampMY, sampMZ, stepLocations, sampTemp, sampPres, 1, threshold, YPosThreshold,
-                        fcLying, fc2, fcAlt, startSampleAbsolute);
-
-                // 2) Stairs labels (5 s epochs) — keep as a separate label stream
-                int EPOCH_SAMPLES = 5 * FsLocal; // 5-second epochs for stairs
-                AltitudeAnalyser.AltitudeAnalysisResult result = AltitudeAnalyser.getInstance()
-                        .analyseAltitudeChange(sampPres, stepLocations, 5);
-                String[] sChunk = result.labels;
-                java.util.List<AmsLabel> stairsLabelsToAdd = new java.util.ArrayList<>();
-                for (int e = 0; e < sChunk.length; e++) {
-                    int startSample = e * EPOCH_SAMPLES;
-                    int endSample = Math.min(nSRead, startSample + EPOCH_SAMPLES) - 1;
-                    if (endSample < startSample)
-                        continue;
-
-                    // Calculate absolute sample indices
-                    long startAbs = startSample + startSampleAbsolute;
-                    long endAbs = endSample + startSampleAbsolute;
-                    long[] timestamps = calculateTimestamps(startAbs, endAbs, sampleTimeMicros, globalStartUS);
-                    long startUS = timestamps[0];
-                    long endUS = timestamps[1];
-
-                    stairsLabelsToAdd.add(AmsLabel.generateStairsLabel(startUS, endUS, sChunk[e]));
-                    allPostureLabels.add(sChunk[e]);
-                }
-                CurrentOpenData.getInstance().getStairsLabels().getLabels().addAll(stairsLabelsToAdd);
-
-                // 3) Posture labels (10 s epochs) — use the fused results prepared in
-                // analyseMotility
-                EPOCH_SAMPLES = 10 * FsLocal; // 10-second epochs
-                java.util.List<String> fusedList = getLastFusedPosture10s();
-                String[] postureChunk = fusedList.toArray(new String[0]);
-
-                java.util.List<AmsLabel> postureLabelsToAdd = new java.util.ArrayList<>();
-                for (int e = 0; e < postureChunk.length; e++) {
-                    int startSample = e * EPOCH_SAMPLES;
-                    int endSample = Math.min(nSRead, startSample + EPOCH_SAMPLES) - 1;
-                    if (endSample < startSample)
-                        continue;
-
-                    // Calculate absolute sample indices
-                    long startAbs = startSample + startSampleAbsolute;
-                    long endAbs = endSample + startSampleAbsolute;
-                    long[] timestamps = calculateTimestamps(startAbs, endAbs, sampleTimeMicros, globalStartUS);
-                    long startUS = timestamps[0];
-                    long endUS = timestamps[1];
-
-                    postureLabelsToAdd.add(AmsLabel.generatePostureLabel(startUS, endUS, postureChunk[e]));
-                    allPostureLabels.add(postureChunk[e]);
-                }
-                // CurrentOpenData.getInstance().getPostureLabels().getLabels().addAll(postureLabelsToAdd);
-
-                // analyseMotility(sampMX, sampMY, sampMZ, stepLocations, sampTemp, sampPres, 1,
-                // threshold, YPosThreshold,
-                // fcLying, fc2, fcAlt, chunkno);
-            }
-            isFirstChunk = false;
-            chunkno++;
         }
 
         if (pressureAvailable) {
             cleanupLabels("Activity");
             cleanupLabels("Stairs");
         }
-        ifMX.close();
-        fisMX.close();
-        ifMY.close();
-        fisMY.close();
-        ifMZ.close();
-        fisMZ.close();
+
+        // Close output channels
+        if (fc2 != null)
+            fc2.close();
+        if (fos2 != null)
+            fos2.close();
+        if (fcLying != null)
+            fcLying.close();
+        if (fosLying != null)
+            fosLying.close();
+        if (fcAlt != null)
+            fcAlt.close();
+        if (fosAlt != null)
+            fosAlt.close();
+
         if (is != null)
             is.close();
 
         if (pressureAvailable) {
-            fc2.close();
-            fos2.close();
-            fcLying.close();
-            fosLying.close();
-            fcAlt.close();
-            fosAlt.close();
             SubsetFilesSingle ssf1 = new SubsetFilesSingle(catFile);
             ssf1.start();
             SubsetFilesSingle ssf2 = new SubsetFilesSingle(lyingFile);
@@ -557,12 +514,6 @@ public class ActivityClassification extends Thread {
             ssf3.start();
         }
         altitudeSum = 0;
-        if (pressureAvailable) {
-            ifTemp.close();
-            ifPres.close();
-            fisTemp.close();
-            fisPres.close();
-        }
     }
 
     static void reduceSamplesize(File filteredFile, File fdzFile, int nToSkip) throws IOException {
@@ -766,7 +717,7 @@ public class ActivityClassification extends Thread {
     private static double[] getSignalMagnitudeVector(int[] accX, int[] accY, int[] accZ) {
         double rmsAcc[] = new double[accX.length];
         for (int i = 0; i < accX.length; i++) {
-            rmsAcc[i] = Math.sqrt(accX[i] * accX[i] + accY[i] * accY[i] + accZ[i] * accZ[i]);
+            rmsAcc[i] = FastMath.sqrt(accX[i] * accX[i] + accY[i] * accY[i] + accZ[i] * accZ[i]);
         }
         return rmsAcc;
     }
