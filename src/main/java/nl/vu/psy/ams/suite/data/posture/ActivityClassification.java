@@ -171,13 +171,16 @@ public class ActivityClassification extends Thread {
 
     public static void generateMeanMotilityFile() throws Exception {
         CurrentOpenData cod = CurrentOpenData.getInstance();
-        File tempDir = cod.getFilePath();
+
+        // Check if required channels exist
         if (!cod.channelExists("MXR") || !cod.channelExists("MYR") || !cod.channelExists("MZR")) {
             return;
         }
+
         File meanMotilityFile = new File(cod.getFilePath(), "StepInstances.bin");
         File meanMotilityFileF = new File(cod.getFilePath(), "FILTStepInstances.bin");
 
+        // Early return if files already exist
         if (meanMotilityFile.exists() && meanMotilityFileF.exists() && cod.channelExists("StepInstances")) {
             SubsetFilesSingle ssf2 = new SubsetFilesSingle(meanMotilityFileF);
             ssf2.start();
@@ -186,95 +189,77 @@ public class ActivityClassification extends Thread {
 
         cod.dirtyFiles.add(meanMotilityFile);
         cod.dirtyFiles.add(meanMotilityFileF);
+        tickFile = new File(cod.getFilePath(), "TicksM.bin");
 
-        File fAccelX = new File(tempDir, "FILTMXR.bin");
-        File fAccelY = new File(tempDir, "FILTMYR.bin");
-        File fAccelZ = new File(tempDir, "FILTMZR.bin");
-        tickFile = new File(tempDir, "TicksM.bin");
-        ByteBuffer bbMX = ByteBuffer.allocateDirect(size);
-        IntBuffer sbMX = bbMX.asIntBuffer();
+        // Read filtered accelerometer files directly to get raw integer counts
+        File fAccelX = new File(cod.getFilePath(), "FILTMXR.bin");
+        File fAccelY = new File(cod.getFilePath(), "FILTMYR.bin");
+        File fAccelZ = new File(cod.getFilePath(), "FILTMZR.bin");
 
-        int[] sampMX = new int[size / 4];
-        int[] sampMY = new int[size / 4];
-        int[] sampMZ = new int[size / 4];
+        // Read all data at once (direct reading, but as raw integers)
+        int[] sampMX, sampMY, sampMZ;
+        try (FileInputStream fisMX = new FileInputStream(fAccelX);
+                FileChannel chMX = fisMX.getChannel();
+                FileInputStream fisMY = new FileInputStream(fAccelY);
+                FileChannel chMY = fisMY.getChannel();
+                FileInputStream fisMZ = new FileInputStream(fAccelZ);
+                FileChannel chMZ = fisMZ.getChannel()) {
 
-        // read binary files
-        long fL = fAccelX.length();
-        int nRead = 0;
+            int numSamples = (int) (fAccelX.length() / 4); // 4 bytes per int
+            ByteBuffer buffer = ByteBuffer.allocate(numSamples * 4);
 
-        FileInputStream fisMX = new FileInputStream(fAccelX);
-        FileChannel ifMX = fisMX.getChannel();
-        FileInputStream fisMY = new FileInputStream(fAccelY);
-        FileChannel ifMY = fisMY.getChannel();
-        FileInputStream fisMZ = new FileInputStream(fAccelZ);
-        FileChannel ifMZ = fisMZ.getChannel();
-        FileOutputStream fos = new FileOutputStream(meanMotilityFile);
-        FileChannel ofC = fos.getChannel();
-        for (long i = 0; i < fL; i += nRead) {
-            // progress.setProgress((int) i);
-            bbMX.position(0);
-            sbMX.position(0);
-            nRead = ifMX.read(bbMX);
-            int nSRead = nRead / 4;
-            if (nRead < 1)
-                break;
-            sbMX.get(sampMX, 0, nSRead);
-            bbMX.position(0);
-            sbMX.position(0);
-            nRead = ifMY.read(bbMX);
-            nSRead = nRead / 4;
-            if (nRead < 1)
-                break;
-            sbMX.get(sampMY, 0, nSRead);
-            bbMX.position(0);
-            sbMX.position(0);
-            nRead = ifMZ.read(bbMX);
-            nSRead = nRead / 4;
-            if (nRead < 1)
-                break;
-            sbMX.get(sampMZ, 0, nSRead);
-            double[] meanAccel = new double[sampMX.length];
-            for (int j = 0; j < nSRead; j++) {
-                meanAccel[j] = Math.sqrt(Math.pow(sampMX[j], 2) + Math.pow(sampMY[j], 2) + Math.pow(sampMZ[j], 2)); // -
-                if (meanAccel[j] == 0)
-                    System.out.println("0 found");
-            }
-            try {
-                byte[] outbuf = new byte[size];
-                ByteBuffer outBuffer = ByteBuffer.wrap(outbuf);
-                IntBuffer osb = outBuffer.asIntBuffer();
-                int[] outBuf = new int[size];
+            // Read X
+            chMX.read(buffer);
+            buffer.flip();
+            sampMX = new int[numSamples];
+            buffer.asIntBuffer().get(sampMX);
 
-                osb.clear();
+            // Read Y
+            buffer.clear();
+            chMY.read(buffer);
+            buffer.flip();
+            sampMY = new int[numSamples];
+            buffer.asIntBuffer().get(sampMY);
 
-                for (int j = 0; j < nSRead; j++) {
-                    outBuf[j] = (int) meanAccel[j];
-                }
-                if (nSRead * 4 != size)
-                    System.out.println("incomplete block");
-                osb.put(outBuf, 0, nSRead);
-                ofC.write(outBuffer);
-            } catch (IOException e2) {
-                e2.printStackTrace();
-            }
+            // Read Z
+            buffer.clear();
+            chMZ.read(buffer);
+            buffer.flip();
+            sampMZ = new int[numSamples];
+            buffer.asIntBuffer().get(sampMZ);
         }
-        ifMX.close();
-        fisMX.close();
-        ifMY.close();
-        fisMY.close();
-        ifMZ.close();
-        fisMZ.close();
-        ofC.close();
-        fos.close();
+
+        // Compute magnitude: sqrt(MX² + MY² + MZ²)
+        int numSamples = sampMX.length;
+        int[] meanMotility = new int[numSamples];
+
+        for (int i = 0; i < numSamples; i++) {
+            meanMotility[i] = (int) Math.sqrt(sampMX[i] * sampMX[i] + sampMY[i] * sampMY[i] + sampMZ[i] * sampMZ[i]);
+        }
+
+        // Write to binary file
+        try (FileOutputStream fos = new FileOutputStream(meanMotilityFile);
+                FileChannel channel = fos.getChannel()) {
+
+            ByteBuffer buffer = ByteBuffer.allocate(numSamples * 4);
+            IntBuffer intBuffer = buffer.asIntBuffer();
+            intBuffer.put(meanMotility);
+            buffer.position(0);
+            buffer.limit(numSamples * 4);
+            channel.write(buffer);
+        }
+
+        // Register the file
         SubsetFilesSingle ssf1 = new SubsetFilesSingle(meanMotilityFile);
         ssf1.start();
 
-        // high pass filter
+        // Apply high-pass filter
         highPassFilterButt(meanMotilityFile, meanMotilityFileF);
         SubsetFilesSingle ssf2 = new SubsetFilesSingle(meanMotilityFileF);
         ssf2.start();
-        try (// average
-                BinaryFile bf = new BinaryFile("FILTStepInstances")) {
+
+        // Calculate average motility
+        try (BinaryFile bf = new BinaryFile("FILTStepInstances")) {
             avMeanMotility = bf.getAverageBetweenTimes(cod.getStartTimeInUS(), cod.getEndTimeInUS());
         }
     }

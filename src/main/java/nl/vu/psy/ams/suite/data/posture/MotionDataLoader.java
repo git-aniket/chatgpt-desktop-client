@@ -39,4 +39,30 @@ public class MotionDataLoader {
             return null;
         }
     }
+
+    /**
+     * Load filtered accelerometer data (FILTMXR, FILTMYR, FILTMZR).
+     * This is used for mean motility calculation where filtered data is required.
+     * 
+     * @return MotionData with filtered accelerometer data, or null if loading fails
+     */
+    public MotionData loadFilteredData() {
+        logger.info("Loading filtered motion data.");
+        try (BinaryFile mxrBinaryFile = new BinaryFile("FILTMXR");
+                BinaryFile myrBinaryFile = new BinaryFile("FILTMYR");
+                BinaryFile mzrBinaryFile = new BinaryFile("FILTMZR")) {
+
+            double[] mxr = mxrBinaryFile.getDataRun();
+            double[] myr = myrBinaryFile.getDataRun();
+            double[] mzr = mzrBinaryFile.getDataRun();
+            int sampleTimeMicros = mxrBinaryFile.getSampleTimeInUS();
+
+            // Return with null gyro data since filtered gyro isn't needed for mean motility
+            return new MotionData(mxr, myr, mzr, null, null, null, sampleTimeMicros);
+
+        } catch (Exception e) {
+            logger.error("An error occurred during filtered motion data loading: {}", e.getMessage());
+            return null;
+        }
+    }
 }
