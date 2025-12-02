@@ -517,88 +517,6 @@ public class ActivityClassification extends Thread {
         altitudeSum = 0;
     }
 
-    static void reduceSamplesize(File filteredFile, File fdzFile, int nToSkip) throws IOException {
-
-        if (nToSkip < 1) {
-            nToSkip = 1;
-        }
-        int skipCounter = 0;
-        int[] samp = new int[size / 4];
-        int[] outBuf = new int[size / 4];
-        int nRead = size;
-        long fL = filteredFile.length();
-
-        FileInputStream fis = new FileInputStream(filteredFile);
-        // byte[] buf = new byte[(int) fL];
-        // fis.read(buf);
-        // ByteBuffer inBuffer = ByteBuffer.wrap(buf);
-        // fis.close();
-        // IntBuffer sb = inBuffer.asIntBuffer();
-        FileOutputStream fos = new FileOutputStream(fdzFile);
-        int buflength = (int) fL / nToSkip;
-        if (buflength % 4 == 1) {
-            buflength += 3;
-        }
-        if (buflength % 4 == 2) {
-            buflength += 2;
-        }
-        if (buflength % 4 == 3) {
-            buflength += 1;
-        }
-        // byte[] outbuf = new byte[(int) buflength];
-        // ByteBuffer outBuffer = ByteBuffer.wrap(outbuf);
-        // IntBuffer osb = outBuffer.asIntBuffer();
-        FileChannel ifC = fis.getChannel();
-        FileChannel ofC = fos.getChannel();
-        long pos = 0;
-        int cycle = 0, nPerCycle = 0;
-
-        for (long i = 0; i < fL; i += nRead) {
-            // int nSRead;
-            // if (sb.capacity() - sb.position() < nRead / 4) {
-            // nSRead = sb.capacity() - sb.position();
-            // } else {
-            // nSRead = nRead / 4;
-            // }
-            bb.position(0);
-            sb.position(0);
-            long newPos = pos;
-            pos += size;
-            if (pos > fL)
-                pos = fL;
-            nRead = (int) (pos - newPos);
-            ifC.read(bb, newPos);
-            int nSRead = nRead / 4;
-            if (nRead < 1) {
-                break;
-            }
-            sb.get(samp, 0, nSRead);
-            int nOut = 0;
-            for (int q = 0; q < nSRead; q++) {
-                skipCounter++;
-                if (skipCounter >= nToSkip) {
-                    outBuf[nOut] = samp[q];
-                    nOut++;
-                    skipCounter = 0;
-                }
-            }
-            if (nPerCycle == 0)
-                nPerCycle = nOut;
-            obb.clear();
-            osb.clear();
-            osb.put(outBuf, 0, nOut);
-            obb.limit(4 * nOut);
-            ofC.write(obb, nPerCycle * cycle * 4);
-            cycle++;
-        }
-        // fos.write(outbuf);
-        ifC.close();
-        fis.close();
-        ofC.close();
-        fos.close();
-
-    }
-
     /**
      * Apply zero-phase 4th-order Butterworth high-pass filter for gravity removal.
      * Equivalent to MATLAB: [b,a] = butter(4, 0.005, 'high')
@@ -1476,54 +1394,6 @@ public class ActivityClassification extends Thread {
         }
     }
 
-    /**
-     * Save a numeric array (e.g., altitude, velocity, etc.) to a text file along
-     * with a time column.
-     * The time starts from 0 and increments by 1/Fs seconds for each sample.
-     *
-     * @param data   Array of double values to save.
-     * @param Fs     Sampling frequency in Hz (used to compute time).
-     * @param path   Path of the output text file.
-     * @param append If true, appends to existing file; otherwise overwrites.
-     */
-    public static void saveToTextFileWithTime(double[] data, double Fs, String filename, boolean append) {
-        if (data == null || data.length == 0) {
-            System.err.println("saveToTextFileWithTime: input array is empty or null");
-            return;
-        }
-
-        try {
-            // Save alongside the compiled ActivityClassification class (i.e., this module’s
-            // dir)
-            String classDir = new File(ActivityClassification.class
-                    .getProtectionDomain()
-                    .getCodeSource()
-                    .getLocation()
-                    .toURI())
-                    .getPath();
-            File parentDir = new File(classDir).getParentFile();
-            File file = new File(parentDir, filename);
-
-            if (!file.getParentFile().exists()) {
-                file.getParentFile().mkdirs();
-            }
-
-            try (PrintWriter out = new PrintWriter(new FileWriter(file, append))) {
-                if (!append) {
-                    out.println("# time_s\tvalue");
-                    out.println("# Fs = " + Fs + " Hz");
-                }
-                for (int i = 0; i < data.length; i++) {
-                    double t = i / Fs;
-                    out.println(t + "\t" + data[i]);
-                }
-            }
-            System.out.println("Saved variable to: " + file.getAbsolutePath());
-        } catch (Exception e) {
-            System.err.println("Error saving data: " + e.getMessage());
-        }
-    }
-
     public static List<String> getLastFusedPosture10s() {
         return new ArrayList<>(lastFusedPosture10s);
     }
@@ -1574,3 +1444,89 @@ public class ActivityClassification extends Thread {
         return out;
     }
 }
+// UNUSED METHOD - Commented out but kept for reference
+// This method was used for downsampling but is no longer called
+/*
+ * static void reduceSamplesize(File filteredFile, File fdzFile, int nToSkip)
+ * throws IOException {
+ * 
+ * if (nToSkip < 1) {
+ * nToSkip = 1;
+ * }
+ * int skipCounter = 0;
+ * int[] samp = new int[size / 4];
+ * int[] outBuf = new int[size / 4];
+ * int nRead = size;
+ * long fL = filteredFile.length();
+ * 
+ * FileInputStream fis = new FileInputStream(filteredFile);
+ * // byte[] buf = new byte[(int) fL];
+ * // fis.read(buf);
+ * // ByteBuffer inBuffer = ByteBuffer.wrap(buf);
+ * // fis.close();
+ * // IntBuffer sb = inBuffer.asIntBuffer();
+ * FileOutputStream fos = new FileOutputStream(fdzFile);
+ * int buflength = (int) fL / nToSkip;
+ * if (buflength % 4 == 1) {
+ * buflength += 3;
+ * }
+ * if (buflength % 4 == 2) {
+ * buflength += 2;
+ * }
+ * if (buflength % 4 == 3) {
+ * buflength += 1;
+ * }
+ * // byte[] outbuf = new byte[(int) buflength];
+ * // ByteBuffer outBuffer = ByteBuffer.wrap(outbuf);
+ * // IntBuffer osb = outBuffer.asIntBuffer();
+ * FileChannel ifC = fis.getChannel();
+ * FileChannel ofC = fos.getChannel();
+ * long pos = 0;
+ * int cycle = 0, nPerCycle = 0;
+ * 
+ * for (long i = 0; i < fL; i += nRead) {
+ * // int nSRead;
+ * // if (sb.capacity() - sb.position() < nRead / 4) {
+ * // nSRead = sb.capacity() - sb.position();
+ * // } else {
+ * // nSRead = nRead / 4;
+ * // }
+ * bb.position(0);
+ * sb.position(0);
+ * long newPos = pos;
+ * pos += size;
+ * if (pos > fL)
+ * pos = fL;
+ * nRead = (int) (pos - newPos);
+ * ifC.read(bb, newPos);
+ * int nSRead = nRead / 4;
+ * if (nRead < 1) {
+ * break;
+ * }
+ * sb.get(samp, 0, nSRead);
+ * int nOut = 0;
+ * for (int q = 0; q < nSRead; q++) {
+ * skipCounter++;
+ * if (skipCounter >= nToSkip) {
+ * outBuf[nOut] = samp[q];
+ * nOut++;
+ * skipCounter = 0;
+ * }
+ * }
+ * if (nPerCycle == 0)
+ * nPerCycle = nOut;
+ * obb.clear();
+ * osb.clear();
+ * osb.put(outBuf, 0, nOut);
+ * obb.limit(4 * nOut);
+ * ofC.write(obb, nPerCycle * cycle * 4);
+ * cycle++;
+ * }
+ * // fos.write(outbuf);
+ * ifC.close();
+ * fis.close();
+ * ofC.close();
+ * fos.close();
+ * 
+ * }
+ */

@@ -2,6 +2,11 @@ package nl.vu.psy.ams.suite.data.posture;
 
 import nl.vu.psy.ams.suite.data.structures.file7fs.Ams7fsChannelInfo;
 
+import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.io.PrintWriter;
+
 /**
  * Utility class for motion data processing.
  */
@@ -35,5 +40,44 @@ public class MotionDataUtils {
             out[i] = inG * g; // g -> m/s^2
         }
         return out;
+    }
+
+    /**
+     * Save a numeric array (e.g., altitude, velocity, etc.) to a text file along
+     * with a time column. The time starts from 0 and increments by 1/Fs seconds
+     * for each sample.
+     *
+     * @param data     Array of double values to save
+     * @param Fs       Sampling frequency in Hz (used to compute time)
+     * @param filePath Absolute path of the output text file
+     * @param append   If true, appends to existing file; otherwise overwrites
+     * @throws IOException if file cannot be written
+     */
+    public static void saveToTextFileWithTime(double[] data, double Fs, String filePath, boolean append)
+            throws IOException {
+        if (data == null || data.length == 0) {
+            throw new IllegalArgumentException("Input array is empty or null");
+        }
+
+        File file = new File(filePath);
+
+        // Create parent directories if they don't exist
+        File parentDir = file.getParentFile();
+        if (parentDir != null && !parentDir.exists()) {
+            parentDir.mkdirs();
+        }
+
+        try (PrintWriter out = new PrintWriter(new FileWriter(file, append))) {
+            if (!append) {
+                out.println("# time_s\tvalue");
+                out.println("# Fs = " + Fs + " Hz");
+            }
+            for (int i = 0; i < data.length; i++) {
+                double t = i / Fs;
+                out.println(t + "\t" + data[i]);
+            }
+        }
+
+        System.out.println("Saved data to: " + file.getAbsolutePath());
     }
 }
