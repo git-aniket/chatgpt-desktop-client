@@ -459,33 +459,43 @@ public class ActivityClassification extends Thread {
                 long endUS = timestamps[1];
 
                 stairsLabelsToAdd.add(AmsLabel.generateStairsLabel(startUS, endUS, sChunk[e]));
-                allPostureLabels.add(sChunk[e]);
+                // NOTE: Removed allPostureLabels.add(sChunk[e]) - stairs labels should not be
+                // in posture list
             }
             CurrentOpenData.getInstance().getStairsLabels().getLabels().addAll(stairsLabelsToAdd);
 
             // 3) Posture labels (10 s epochs)
-            EPOCH_SAMPLES = 10 * FsLocal; // 10-second epochs
-            java.util.List<String> fusedList = getLastFusedPosture10s();
-            String[] postureChunk = fusedList.toArray(new String[0]);
-
-            java.util.List<AmsLabel> postureLabelsToAdd = new java.util.ArrayList<>();
-            for (int e = 0; e < postureChunk.length; e++) {
-                long startSample = (long) e * EPOCH_SAMPLES;
-                long endSample = Math.min(totalSamples, startSample + EPOCH_SAMPLES) - 1;
-                if (endSample < startSample)
-                    continue;
-
-                long[] timestamps = calculateTimestamps(startSample, endSample, sampleTimeMicros, globalStartUS);
-                long startUS = timestamps[0];
-                long endUS = timestamps[1];
-
-                postureLabelsToAdd.add(AmsLabel.generatePostureLabel(startUS, endUS, postureChunk[e]));
-                allPostureLabels.add(postureChunk[e]);
-            }
+            // NOTE: Posture classification is now handled by PostureClassifier
+            // This code is commented out to avoid redundant posture detection
+            /*
+             * EPOCH_SAMPLES = 10 * FsLocal; // 10-second epochs
+             * java.util.List<String> fusedList = getLastFusedPosture10s();
+             * String[] postureChunk = fusedList.toArray(new String[0]);
+             * 
+             * java.util.List<AmsLabel> postureLabelsToAdd = new java.util.ArrayList<>();
+             * for (int e = 0; e < postureChunk.length; e++) {
+             * long startSample = (long) e * EPOCH_SAMPLES;
+             * long endSample = Math.min(totalSamples, startSample + EPOCH_SAMPLES) - 1;
+             * if (endSample < startSample)
+             * continue;
+             * 
+             * long[] timestamps = calculateTimestamps(startSample, endSample,
+             * sampleTimeMicros, globalStartUS);
+             * long startUS = timestamps[0];
+             * long endUS = timestamps[1];
+             * 
+             * postureLabelsToAdd.add(AmsLabel.generatePostureLabel(startUS, endUS,
+             * postureChunk[e]));
+             * allPostureLabels.add(postureChunk[e]);
+             * }
+             */
         }
 
         if (pressureAvailable) {
-            cleanupLabels("Activity");
+            // Only cleanup stairs labels (posture classification is handled by
+            // PostureClassifier)
+            // cleanupLabels("Activity"); // Commented out - no longer generating activity
+            // labels here
             cleanupLabels("Stairs");
         }
 
@@ -1108,21 +1118,29 @@ public class ActivityClassification extends Thread {
         }
 
         // --- Posture + Stairs fusion from within analyseMotility ---
-        // Note: getPostureNuovo runs on 10 s windows at 1000 Hz (X/Y/Z in m/s^2).
-        // analyseAltitudeChange returns a per-sample (1000 Hz) label stream derived
-        // from 5 Hz pressure.
-        // We fuse by scanning the corresponding 10 s span in the per-sample stairs
-        // labels.
-        AltitudeAnalyser.AltitudeAnalysisResult altRes1s = AltitudeAnalyser.getInstance().analyseAltitudeChange(
-                sampPres,
-                stepLocations, 5);
-        String[] posture10s = getPostureNuovo(sampleMXDouble, sampleMYDouble, sampleMZDouble, stepLocations);
-        String[] fused10s = fusePostureWithStairs10s(posture10s, altRes1s.labels);
+        // NOTE: Posture classification is now handled by PostureClassifier
+        // This fusion logic is commented out to avoid redundant posture detection
+        /*
+         * // Note: getPostureNuovo runs on 10 s windows at 1000 Hz (X/Y/Z in m/s^2).
+         * // analyseAltitudeChange returns a per-sample (1000 Hz) label stream derived
+         * // from 5 Hz pressure.
+         * // We fuse by scanning the corresponding 10 s span in the per-sample stairs
+         * // labels.
+         * AltitudeAnalyser.AltitudeAnalysisResult altRes1s =
+         * AltitudeAnalyser.getInstance().analyseAltitudeChange(
+         * sampPres,
+         * stepLocations, 5);
+         * String[] posture10s = getPostureNuovo(sampleMXDouble, sampleMYDouble,
+         * sampleMZDouble, stepLocations);
+         * String[] fused10s = fusePostureWithStairs10s(posture10s, altRes1s.labels);
+         * 
+         * // Cache fused results for this chunk (do not write epoch labels here to
+         * avoid
+         * // duplication).
+         * lastFusedPosture10s.clear();
+         * java.util.Collections.addAll(lastFusedPosture10s, fused10s);
+         */
 
-        // Cache fused results for this chunk (do not write epoch labels here to avoid
-        // duplication).
-        lastFusedPosture10s.clear();
-        java.util.Collections.addAll(lastFusedPosture10s, fused10s);
         // get altitude from pressure
         double[] altitude = getAltitudeFromPressure(sampPres);
 
@@ -1360,38 +1378,6 @@ public class ActivityClassification extends Thread {
                 posture = posture + "/" + namesIterator.next();
         }
         return posture;
-    }
-
-    /**
-     * Helper method to save data to a file.
-     * 
-     * @param data
-     * @param filename
-     * @param overwrite whether to overwrite or append to file
-     */
-    @SuppressWarnings("unused")
-    private static void saveDataToFile(Object[][] data, String filename, boolean overwrite) {
-        try (PrintWriter writer = new PrintWriter(new FileWriter(filename, !overwrite))) {
-            int numRows = 0;
-            for (Object[] col : data) {
-                if (col != null && col.length > numRows) {
-                    numRows = col.length;
-                }
-            }
-            for (int row = 0; row < numRows; row++) {
-                StringBuilder line = new StringBuilder();
-                for (int col = 0; col < data.length; col++) {
-                    if (data[col] != null && row < data[col].length) {
-                        line.append(String.valueOf(data[col][row]));
-                    }
-                    line.append("\t");
-                }
-                writer.println(line.toString().trim());
-            }
-            System.out.println((overwrite ? "Data overwritten in: " : "Data appended to: ") + filename);
-        } catch (IOException e) {
-            System.err.println("Error writing data to file: " + e.getMessage());
-        }
     }
 
     public static List<String> getLastFusedPosture10s() {
