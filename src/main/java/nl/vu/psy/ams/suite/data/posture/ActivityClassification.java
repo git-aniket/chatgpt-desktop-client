@@ -1,55 +1,28 @@
 package nl.vu.psy.ams.suite.data.posture;
 
-// import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
-// import java.io.FileWriter; // Moved to MotionDataUtils
-// import java.io.FileReader;
-// import java.io.FileWriter;
-// import java.io.FileWriter;
 import java.io.IOException;
-// import java.io.PrintWriter; // Moved to MotionDataUtils
-// import java.io.PrintWriter;
 import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.nio.IntBuffer;
 import java.nio.DoubleBuffer;
-// import java.nio.FloatBuffer;
 import java.nio.channels.FileChannel;
 import java.util.ArrayList;
-
 import java.util.HashSet;
 import java.util.Iterator;
-// import java.util.HashMap;
 import java.util.List;
-// import java.util.Map;
-// import java.util.HashMap;
-// import java.util.List;
-// import java.util.Map;
-// import java.util.Collections;
-// import java.util.HashSet;
-// import java.util.Set;
-import java.util.NavigableSet;
 import java.util.Set;
-import java.util.TreeSet;
-import org.apache.commons.math3.util.FastMath;
-// import javax.swing.JFrame;
-// import javax.swing.ProgressMonitor;
 
 import nl.vu.psy.ams.suite.data.CurrentOpenData;
 import nl.vu.psy.ams.suite.data.SubsetFilesSingle;
-// import net.objecthunter.exp4j.Expression;
-// import net.objecthunter.exp4j.ExpressionBuilder;
 import nl.vu.psy.ams.suite.data.files.BinaryFile;
-import nl.vu.psy.ams.suite.data.structures.AmsLabel;
+
 import nl.vu.psy.ams.suite.data.structures.file7fs.Ams7fsChannelInfo;
 import nl.vu.psy.ams.suite.gui.MainFrame;
 import nl.vu.psy.ams.suite.main.AppSettings;
-// import javax.swing.ProgressMonitor;
 import nl.vu.psy.ams.suite.main.AppSettings.Settings;
-
-// import ml.dmlc.xgboost4j.java.*;
 
 public class ActivityClassification extends Thread {
 
@@ -107,7 +80,6 @@ public class ActivityClassification extends Thread {
 
     static ArrayList<Double> altitudeCarryover = new ArrayList<Double>();
 
-    private static final int PATCH_WIDTH = 1000; // 0.5 second transition patch width in seconds
     static final int deltaIdx = 2000; // 2 seconds of samples
     static final double thresholdSitStand = 0.1;
     static final double thresholdStairs = 0.15;
@@ -120,11 +92,6 @@ public class ActivityClassification extends Thread {
     static final int HORIZONTAL_LYING_ON_RIGHT_SIDE = 300;
     static final int HORIZONTAL_LYING_UNKNOWN = 600; // unknown
 
-    // static final int CLIMBING_UPSTAIRS = 10;
-    // static final int CLIMBING_DOWNSTAIRS = 20;
-    // static final int STAIRS = 30;
-    // static final int STANDING = 40;
-    // static final int SITTING = 50;
     static final int STATIONARY = 55;
     static final int WALKING = 60;
     static final int RUNNING = 70;
@@ -182,32 +149,6 @@ public class ActivityClassification extends Thread {
             }
         }
         return true;
-    }
-
-    /**
-     * Calculate start and end timestamps for a sample range.
-     * Uses simple calculation like PostureClassifier, with optional tick
-     * correction.
-     * 
-     * @param startSampleAbsolute Absolute start sample index
-     * @param endSampleAbsolute   Absolute end sample index
-     * @param sampleTimeMicros    Microseconds per sample
-     * @param globalStartUS       Global start time in microseconds
-     * @return long[] {startUS, endUS}
-     */
-    private static long[] calculateTimestamps(long startSampleAbsolute, long endSampleAbsolute,
-            int sampleTimeMicros, long globalStartUS) {
-        // Optional tick correction if TicksM.bin exists
-        if (tickFile != null && tickFile.exists()) {
-            startSampleAbsolute = correctForTicks(startSampleAbsolute);
-            endSampleAbsolute = correctForTicks(endSampleAbsolute);
-        }
-
-        // Simple timestamp calculation (like PostureClassifier)
-        long startUS = globalStartUS + (startSampleAbsolute * sampleTimeMicros / 1000);
-        long endUS = globalStartUS + (endSampleAbsolute * sampleTimeMicros / 1000);
-
-        return new long[] { startUS, endUS };
     }
 
     public static void generateMeanMotilityFile() throws Exception {
@@ -332,18 +273,6 @@ public class ActivityClassification extends Thread {
             cod.dirtyFiles.add(catFile);
             cod.dirtyFiles.add(lyingFile);
             cod.dirtyFiles.add(AltitudeFile);
-            // File fileTicks = new File(CurrentOpenData.getInstance().getFilePath(),
-            // "TicksM.bin");
-            // File fileTicksRed = new File(CurrentOpenData.getInstance().getFilePath(),
-            // "TicksMRed.bin");
-            // if (fileTicks.exists()) {
-            // try {
-            // reduceSamplesize(fileTicks, fileTicksRed, 1400);
-            // } catch (IOException e) {
-            // e.printStackTrace();
-            // }
-            // CurrentOpenData.getInstance().dirtyFiles.add(fileTicksRed);
-            // }
         }
         // reduce sample size for accel x,y,z, and gyro x,y,z
         File fAccelX = new File(tempDir, "FILTMXR.bin");
@@ -533,208 +462,12 @@ public class ActivityClassification extends Thread {
         }
     }
 
-    // A function to get mean motility from acceleration data
-    @SuppressWarnings("unused")
-    private static double[] getSignalMagnitudeVector(int[] accX, int[] accY, int[] accZ) {
-        double rmsAcc[] = new double[accX.length];
-        for (int i = 0; i < accX.length; i++) {
-            rmsAcc[i] = FastMath.sqrt(accX[i] * accX[i] + accY[i] * accY[i] + accZ[i] * accZ[i]);
-        }
-        return rmsAcc;
-    }
-
     private static double[] getAltitudeFromPressure(double[] pressure) {
         double[] altitude = new double[pressure.length];
         for (int j = 0; j < pressure.length; j++) {
             altitude[j] = (pressure[j] - 102000.0) / -12.2;
         }
         return altitude;
-    }
-
-    @SuppressWarnings("unused")
-    private static int[] analyseHorizontalVertical(int[] sampMX, int[] sampMY, int[] sampMZ, double threshold,
-            double thresholdLow) {
-        int[] horizontalVerticalStates = new int[sampMX.length];
-        for (int j = 0; j < sampMX.length; j++) {
-
-            final double hvHigherThreshold = threshold; // 0.8 g's
-            final double hvLowerThreshold = thresholdLow; // 0.5 * 2000;
-
-            // HORIZONTAL and its subtypes
-            if (sampMX[j] >= hvLowerThreshold) {
-                // double y = sampMY[j];
-                // double x = sampMX[j];
-                // lyingAngleStates[j] = Math.atan2(y, x) * 180 / Math.PI;
-
-                if (sampMZ[j] >= hvHigherThreshold) {
-                    horizontalVerticalStates[j] = HORIZONTAL_LYING_ON_BACK;
-
-                } else if (sampMZ[j] <= -hvHigherThreshold) {
-                    horizontalVerticalStates[j] = HORIZONTAL_LYING_ON_BELLY;
-                } else {
-                    if (sampMY[j] >= hvHigherThreshold) {
-                        horizontalVerticalStates[j] = HORIZONTAL_LYING_ON_RIGHT_SIDE;
-                    } else if (sampMY[j] <= -hvHigherThreshold) {
-                        horizontalVerticalStates[j] = HORIZONTAL_LYING_ON_LEFT_SIDE;
-                    } else {
-                        horizontalVerticalStates[j] = HORIZONTAL_LYING_UNKNOWN;
-                    }
-                }
-
-            } // VERTICAL and its subtypes
-            else {
-                horizontalVerticalStates[j] = VERTICAL;
-            }
-        }
-
-        return horizontalVerticalStates;
-    }
-
-    @SuppressWarnings("unused")
-    private static double[] getActivityIntensityLabel(double[] motilityIntensity) {
-        double[] motilityIntensityLabel = new double[motilityIntensity.length];
-        for (int i = 0; i < motilityIntensity.length; i++) {
-            if (motilityIntensity[i] < ACTIVITY_LOW_INTENSITY_THRESHOLD) {
-                motilityIntensityLabel[i] = ACTIVITY_LOW_INTENSITY;
-            } else if (motilityIntensity[i] >= ACTIVITY_LOW_INTENSITY_THRESHOLD
-                    && motilityIntensity[i] < ACTIVITY_MEDIUM_INTENSITY_THRESHOLD) {
-                motilityIntensityLabel[i] = ACTIVITY_MEDIUM_INTENSITY;
-            } else if (motilityIntensity[i] >= ACTIVITY_MEDIUM_INTENSITY_THRESHOLD) {
-                motilityIntensityLabel[i] = ACTIVITY_HIGH_INTENSITY;
-            }
-        }
-        return motilityIntensityLabel;
-    }
-
-    @SuppressWarnings("unused")
-    private static double[] fuseMotilityIntensityLableWithHVStates(double[] motilityIntensityLabel,
-            int[] horizontalVerticalStates) {
-        double[] activity = new double[motilityIntensityLabel.length];
-        for (int i = 0; i < horizontalVerticalStates.length; i++) {
-            // if subject is vertical check the intensity of motility
-            if (horizontalVerticalStates[i] == VERTICAL) {
-                if (motilityIntensityLabel[i] == ACTIVITY_HIGH_INTENSITY) {
-                    activity[i] = RUNNING;
-                } else if (motilityIntensityLabel[i] == ACTIVITY_MEDIUM_INTENSITY) {
-                    activity[i] = WALKING;
-                } else if (motilityIntensityLabel[i] == ACTIVITY_LOW_INTENSITY) {
-                    activity[i] = STATIONARY;
-                }
-            } else {// else if subject is horizontal, then consider lying down
-                activity[i] = LYING_DOWN;
-            }
-        }
-        return activity;
-    }
-
-    @SuppressWarnings("unused")
-    private static int[] getActivityTransitionFromAltitude(double[] altitude) {
-        double[] d_altitude = centralDifference(altitude);
-        double[] dd_altitude = centralDifference(d_altitude);
-
-        int[] altitudeChangeIdx = getSignChanges(dd_altitude);
-        int[] activityTransitions = new int[altitudeChangeIdx.length];
-
-        for (int i = deltaIdx; i < altitudeChangeIdx.length - deltaIdx; i++) {
-            if (altitudeChangeIdx[i] == 0) // if slope is 0
-            {
-                continue;
-            }
-
-            // Get the difference between higher and lower index
-            double forwardDiff = altitude[i + deltaIdx] - altitude[i];
-            double backwardDiff = altitude[i] - altitude[i - deltaIdx];
-
-            if (altitudeChangeIdx[i] == 1) { // if sloping positive
-                if (forwardDiff >= thresholdSitStand && forwardDiff <= thresholdStairs
-                        && backwardDiff >= thresholdSitStand
-                        && backwardDiff <= thresholdStairs) {
-                    // this is a sit-to-stand
-                    activityTransitions[i] = SIT_TO_STAND;
-                } else if (forwardDiff > thresholdStairs && backwardDiff > thresholdStairs) {
-                    // this is a stairs up
-                    activityTransitions[i] = LEVEL_GROUND_TO_STAIRS_UP;
-                }
-
-            } else if (altitudeChangeIdx[i] == -1) {// if sloping negative
-                if (forwardDiff <= -thresholdSitStand && forwardDiff >= -thresholdStairs
-                        && backwardDiff <= -thresholdSitStand
-                        && backwardDiff >= -thresholdStairs) {
-                    // this is a stand-to-sit
-                    activityTransitions[i] = STAND_TO_SIT;
-                } else if (forwardDiff < -thresholdStairs && backwardDiff < -thresholdStairs) {
-                    // this is a stairs down
-                    activityTransitions[i] = LEVEL_GROUND_TO_STAIRS_DOWN;
-                }
-            }
-        }
-
-        return activityTransitions;
-    }
-
-    @SuppressWarnings("unused")
-    private static double[] fuseMotilityHVWithAltitudeTransitions(double[] activityMotilityLabelHV,
-            int[] activityTransitionAltitude) {
-        if (activityMotilityLabelHV.length != activityTransitionAltitude.length) {
-            throw new IllegalArgumentException("fusedActivity and activityTransitionAltitude must be of same length");
-        }
-
-        double[] overallActivity = new double[activityMotilityLabelHV.length];
-
-        // ! Critical part,, check for correct implementation
-        for (int i = 0; i < overallActivity.length - PATCH_WIDTH; i++) {
-            overallActivity[i] = activityMotilityLabelHV[i];
-            if (isWalkingOrRunning(activityMotilityLabelHV[i])) {
-                if (i >= PATCH_WIDTH) {
-                    switch (activityTransitionAltitude[i]) {
-                        case LEVEL_GROUND_TO_STAIRS_UP -> {
-                            modifyOverallActivityCreatePatch(overallActivity, i, LEVEL_GROUND_TO_STAIRS_UP);
-                            i = i + PATCH_WIDTH;
-                            break;
-                        }
-                        case LEVEL_GROUND_TO_STAIRS_DOWN -> {
-                            modifyOverallActivityCreatePatch(overallActivity, i, LEVEL_GROUND_TO_STAIRS_DOWN);
-                            i = i + PATCH_WIDTH;
-                            break;
-                        }
-                        default -> {
-                        }
-                    }
-
-                }
-            } else if (isStationaryOrLyingDown(activityMotilityLabelHV[i])) {
-                if (i >= PATCH_WIDTH) {
-                    switch (activityTransitionAltitude[i]) {
-                        case SIT_TO_STAND -> {
-                            modifyOverallActivityCreatePatch(overallActivity, i, SIT_TO_STAND);
-                            break;
-                        }
-                        case STAND_TO_SIT -> {
-                            modifyOverallActivityCreatePatch(overallActivity, i, STAND_TO_SIT);
-                            break;
-                        }
-                        default -> {
-                        }
-                    }
-
-                }
-            }
-        }
-        return overallActivity;
-    }
-
-    private static boolean isWalkingOrRunning(double activity) {
-        return activity == WALKING || activity == RUNNING;
-    }
-
-    private static boolean isStationaryOrLyingDown(double activity) {
-        return activity == STATIONARY || activity == LYING_DOWN;
-    }
-
-    private static void modifyOverallActivityCreatePatch(double[] activityWithAltitude, int i, int patchValue) {
-        for (int j = i; j > i - PATCH_WIDTH; j--) {
-            activityWithAltitude[j] = patchValue;
-        }
     }
 
     public static double[] diff(double[] array) {
@@ -924,56 +657,6 @@ public class ActivityClassification extends Thread {
         return offset;
     }
 
-    @SuppressWarnings("null")
-    public static void cleanupLabels(String labelset) {
-        TreeSet<AmsLabel> toRemove = new TreeSet<AmsLabel>();
-        TreeSet<AmsLabel> toAdd = new TreeSet<AmsLabel>();
-        TreeSet<AmsLabel> labels = null;
-        if (labelset.equals("Activity")) {
-            labels = CurrentOpenData.getInstance().getPostureLabels().getLabels();
-        } else {
-            labels = CurrentOpenData.getInstance().getStairsLabels().getLabels();
-        }
-        boolean done = false;
-
-        while (!done) {
-            for (AmsLabel l : labels) {
-                NavigableSet<AmsLabel> tailSet = labels.tailSet(l, false);
-                if (tailSet.isEmpty()) {
-                    break;
-                }
-                AmsLabel l2 = tailSet.getFirst();
-                if (l.getRightTime() - l.getLeftTime() < 1500000) {
-                    toRemove.add(l);
-                } else if (l2.getLeftTime() < l.getRightTime() + 1500000
-                        && l.getAttributes().get(labelset).equals(l2.getAttributes().get(labelset))) { // partial
-                    // overlap
-                    // or less the
-                    // 3s
-                    // apart
-                    double lTime = l.getLeftTime();
-                    double rTime = l2.getRightTime();
-                    String reason = l.getAttributes().get(labelset);
-                    toRemove.add(l);
-                    toRemove.add(l2);
-                    if (labelset.equals("Activity")) {
-                        toAdd.add(AmsLabel.generatePostureLabel(lTime, rTime, reason));
-                    } else {
-                        toAdd.add(AmsLabel.generateStairsLabel(lTime, rTime, reason));
-                    }
-                }
-            }
-            if (!labels.removeAll(toRemove) && toRemove.size() > 0)
-                done = true;
-            if (!labels.addAll(toAdd) && toAdd.size() > 0)
-                done = true;
-            if (toRemove.size() == 0 && toAdd.size() == 0)
-                done = true;
-            toRemove.clear();
-            toAdd.clear();
-        }
-    }
-
     // get the average MET value for the given time range
     // leftTime and rightTime are in ms
     // ! There are multiple instances of MET values out of bounds
@@ -1010,7 +693,6 @@ public class ActivityClassification extends Thread {
                 av += allMETsBNB.get(i);
             if (method == 5)
                 av += allMETsF.get(i);
-            // TODO:Check why the values are so large
             System.out
                     .println("MET value " + method + " index " + i + " " + midpoint + " " + leftTime + " " + rightTime);
             ninAv++;
