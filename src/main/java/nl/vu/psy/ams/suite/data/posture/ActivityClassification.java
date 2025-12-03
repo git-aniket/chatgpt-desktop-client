@@ -18,7 +18,7 @@ import java.nio.DoubleBuffer;
 // import java.nio.FloatBuffer;
 import java.nio.channels.FileChannel;
 import java.util.ArrayList;
-import java.util.Arrays;
+
 import java.util.HashSet;
 import java.util.Iterator;
 // import java.util.HashMap;
@@ -155,8 +155,6 @@ public class ActivityClassification extends Thread {
     private static List<Double> allMADs = new ArrayList<>();
     private static List<Double> allSpeech = new ArrayList<>();
     private static List<String> allPostureLabels = new ArrayList<>();
-    // Cache for the most recent fused 10s posture+stairs labels
-    private static List<String> lastFusedPosture10s = new ArrayList<>();
 
     @Override
     public void run() {
@@ -443,67 +441,11 @@ public class ActivityClassification extends Thread {
                     fcLying, fc2, fcAlt, 0L);
 
             // NOTE: Stairs detection is now handled by StairsClassifier.java
-            // The code below has been commented out to avoid duplication
-            /*
-             * // 2) Stairs labels (5 s epochs)
-             * int EPOCH_SAMPLES = 5 * FsLocal; // 5-second epochs for stairs
-             * AltitudeAnalyser.AltitudeAnalysisResult result =
-             * AltitudeAnalyser.getInstance()
-             * .analyseAltitudeChange(allSampPres, stepLocations, 5);
-             * String[] sChunk = result.labels;
-             * java.util.List<AmsLabel> stairsLabelsToAdd = new java.util.ArrayList<>();
-             * for (int e = 0; e < sChunk.length; e++) {
-             * long startSample = (long) e * EPOCH_SAMPLES;
-             * long endSample = Math.min(totalSamples, startSample + EPOCH_SAMPLES) - 1;
-             * if (endSample < startSample)
-             * continue;
-             * 
-             * long[] timestamps = calculateTimestamps(startSample, endSample,
-             * sampleTimeMicros, globalStartUS);
-             * long startUS = timestamps[0];
-             * long endUS = timestamps[1];
-             * 
-             * stairsLabelsToAdd.add(AmsLabel.generateStairsLabel(startUS, endUS,
-             * sChunk[e]));
-             * // NOTE: Removed allPostureLabels.add(sChunk[e]) - stairs labels should not
-             * be
-             * // in posture list
-             * }
-             * CurrentOpenData.getInstance().getStairsLabels().getLabels().addAll(
-             * stairsLabelsToAdd);
-             */
 
-            // 3) Posture labels (10 s epochs)
             // NOTE: Posture classification is now handled by PostureClassifier
-            // This code is commented out to avoid redundant posture detection
-            /*
-             * EPOCH_SAMPLES = 10 * FsLocal; // 10-second epochs
-             * java.util.List<String> fusedList = getLastFusedPosture10s();
-             * String[] postureChunk = fusedList.toArray(new String[0]);
-             * 
-             * java.util.List<AmsLabel> postureLabelsToAdd = new java.util.ArrayList<>();
-             * for (int e = 0; e < postureChunk.length; e++) {
-             * long startSample = (long) e * EPOCH_SAMPLES;
-             * long endSample = Math.min(totalSamples, startSample + EPOCH_SAMPLES) - 1;
-             * if (endSample < startSample)
-             * continue;
-             * 
-             * long[] timestamps = calculateTimestamps(startSample, endSample,
-             * sampleTimeMicros, globalStartUS);
-             * long startUS = timestamps[0];
-             * long endUS = timestamps[1];
-             * 
-             * postureLabelsToAdd.add(AmsLabel.generatePostureLabel(startUS, endUS,
-             * postureChunk[e]));
-             * allPostureLabels.add(postureChunk[e]);
-             * }
-             */
         }
 
-        if (pressureAvailable) {
-            // NOTE: Stairs label cleanup is now handled by StairsClassifier.java
-            // cleanupLabels("Stairs");
-        }
+        // NOTE: Stairs label cleanup is now handled by StairsClassifier.java
 
         // Close output channels
         if (fc2 != null)
@@ -795,65 +737,6 @@ public class ActivityClassification extends Thread {
         }
     }
 
-    /**
-     * Interpolates the given input array to a desired length. This method uses
-     * linear interpolation to fill in the gaps.
-     * 
-     * @param inputArray    The original data array to be interpolated.
-     * @param desiredLength The length of the desired output array.
-     * @return The interpolated data array of the desired length.
-     */
-    public static double[] interpolateArray(double[] inputArray, int desiredLength) {
-        if (inputArray == null) {
-            throw new NullPointerException("Input array cannot be null");
-        }
-
-        int originalLength = inputArray.length;
-        if (originalLength == 0) {
-            throw new IllegalArgumentException("Input array cannot be empty");
-        }
-
-        if (desiredLength <= 0) {
-            throw new IllegalArgumentException("Desired length must be a positive integer");
-        }
-
-        double[] interpolatedArray = new double[desiredLength];
-
-        // Create x values array
-        double[] xValues = new double[originalLength];
-        for (int i = 0; i < originalLength; i++) {
-            xValues[i] = (double) i / (originalLength - 1);
-        }
-
-        // Interpolate for each point in the desired array
-        for (int i = 0; i < desiredLength; i++) {
-            double x = (double) i / (desiredLength - 1);
-
-            // Find two surrounding points in the input array
-            int index0 = Arrays.binarySearch(xValues, x);
-            int index1;
-            if (index0 < 0) {
-                // if the exact match is not found, take the closest one
-                index0 = -index0 - 2;
-                index1 = Math.min(index0 + 1, originalLength - 1);
-            } else {
-                // otherwise take the next one
-                index1 = Math.min(index0 + 1, originalLength - 1);
-            }
-
-            double x0 = xValues[index0];
-            double x1 = xValues[index1];
-            double y0 = inputArray[index0];
-            double y1 = inputArray[index1];
-
-            // Calculate the slope and apply it to the interpolated value
-            double dx = (y1 - y0) / (x1 - x0);
-            interpolatedArray[i] = y0 + (x - x0) * dx;
-        }
-
-        return interpolatedArray;
-    }
-
     public static double[] diff(double[] array) {
         double[] result = new double[array.length - 1];
         for (int i = 0; i < array.length - 1; i++) {
@@ -864,139 +747,6 @@ public class ActivityClassification extends Thread {
 
     // NOTE: saveColumns methods have been moved to MotionDataUtils.saveColumns()
     // Use MotionDataUtils.saveColumns(filePath, overwrite, columns) instead
-
-    /**
-     * method is used to detect steps in the given array using acceleration
-     * 
-     * @param accelX in m/s^2
-     * @param accelY in m/s^2
-     * @param accelZ in m/s^2
-     * @return locations of steps
-     * @deprecated Use StepDetector.getInstance().detectSteps() instead
-     */
-    @Deprecated
-    public static int[] getStepsNuovo(double[] accelX, double[] accelY, double[] accelZ) {
-        // This deprecated method doesn't have chunk context, so assume start at 0
-        return StepDetector.getInstance().detectSteps(accelX, accelY, accelZ, 0L,
-                ActivityClassification::correctForTicks);
-    }
-
-    /**
-     * Convenience overload: posture without providing steps.
-     * Delegates to the 4-arg version with stepsOpt = null.
-     */
-    public static String[] getPostureNuovo(double[] accelX, double[] accelY, double[] accelZ) {
-        return getPostureNuovo(accelX, accelY, accelZ, null);
-    }
-
-    /**
-     * Core posture classifier (10 s windows @ 1000 Hz).
-     * If stepsOpt is null, steps are detected internally.
-     */
-    public static String[] getPostureNuovo(double[] accelX, double[] accelY, double[] accelZ, int[] stepsOpt) {
-        // --- Input validation ---
-        if (accelX == null || accelY == null || accelZ == null) {
-            throw new IllegalArgumentException("Input arrays cannot be null");
-        }
-        int n = Math.min(accelX.length, Math.min(accelY.length, accelZ.length));
-        if (n <= 0)
-            return new String[0];
-
-        // --- Trim arrays to same length ---
-        double[] x = (n == accelX.length) ? accelX : java.util.Arrays.copyOf(accelX, n);
-        double[] y = (n == accelY.length) ? accelY : java.util.Arrays.copyOf(accelY, n);
-        double[] z = (n == accelZ.length) ? accelZ : java.util.Arrays.copyOf(accelZ, n);
-
-        // --- Step data handling ---
-        int[] steps;
-        if (stepsOpt != null) {
-            if (stepsOpt.length < n) {
-                steps = java.util.Arrays.copyOf(stepsOpt, n);
-            } else if (stepsOpt.length > n) {
-                steps = java.util.Arrays.copyOfRange(stepsOpt, 0, n);
-            } else {
-                steps = stepsOpt;
-            }
-        } else {
-            steps = getStepsNuovo(x, y, z);
-        }
-
-        // --- Parameter definitions ---
-        final int Fs = SAMPLING_FREQUENCY; // 1000 Hz
-        final int WINDOW_SEC = 10;
-        final int MIN_STEPS_IN_10_SECONDS = 2;
-        final int NUM_SAMPLES_PER_10S = WINDOW_SEC * Fs;
-
-        // --- Intensity thresholds (tunable) ---
-        final double G_CONST = 9.80665; // m/s^2
-        final double LPA_THRESHOLD = 1.0;
-        final double MPA_THRESHOLD = 3.0;
-        final double STATIC_THRESHOLD = -2; // m/s^2
-
-        // --- Label each 10-second window ---
-        int nWindows = (int) Math.ceil(n / (double) NUM_SAMPLES_PER_10S);
-        String[] windowLabels = new String[nWindows];
-
-        for (int w = 0; w < nWindows; w++) {
-            int wStart = w * NUM_SAMPLES_PER_10S;
-            int wEnd = Math.min(n, wStart + NUM_SAMPLES_PER_10S);
-
-            int stepCount = 0;
-            boolean isDynamic = false;
-
-            for (int i = wStart; i < wEnd; i++) {
-                if (steps[i] == 1) {
-                    stepCount++;
-                    if (stepCount > MIN_STEPS_IN_10_SECONDS) {
-                        isDynamic = true;
-                        break;
-                    }
-                }
-            }
-
-            windowLabels[w] = "Unknown";
-
-            if (isDynamic) {
-                double sumDyn = 0.0;
-                int count = Math.max(1, (wEnd - wStart));
-                for (int i = wStart; i < wEnd; i++) {
-                    double totalAcceleration = FastMath.hypot(FastMath.hypot(x[i], y[i]), z[i]);
-                    double dynamicAcceleration = FastMath.max(totalAcceleration - G_CONST, 0.0);
-                    if (dynamicAcceleration < 0)
-                        dynamicAcceleration = 0;
-                    sumDyn += dynamicAcceleration;
-                }
-                double meanDyn = sumDyn / count;
-
-                if (meanDyn < LPA_THRESHOLD) {
-                    windowLabels[w] = "Dynamic LPA";
-                } else if (meanDyn < MPA_THRESHOLD) {
-                    windowLabels[w] = "Dynamic MPA";
-                } else {
-                    windowLabels[w] = "Dynamic VPA";
-                }
-            } else {
-                double avgX = 0.0;
-                for (int i = wStart; i < wEnd; i++) {
-                    avgX += x[i];
-                }
-                avgX /= Math.max(1, (wEnd - wStart));
-
-                if (avgX >= STATIC_THRESHOLD)
-                    windowLabels[w] = "Static Lying";
-                else
-                    windowLabels[w] = "Static Upright";
-            }
-        }
-
-        // Debug
-        System.out.println("10s-window posture classification completed: " + nWindows + " window(s).");
-        for (int w = 0; w < windowLabels.length; w++) {
-            System.out.println("Window " + (w + 1) + ": " + windowLabels[w]);
-        }
-
-        return windowLabels;
-    }
 
     public static double analyseMotility(int[] sampMX, int[] sampMY, int[] sampMZ, int[] stepLocations,
             double sampTemp[], double sampPres[],
@@ -1053,29 +803,7 @@ public class ActivityClassification extends Thread {
             allSpeech.add(Speech.get(i));
         }
 
-        // --- Posture + Stairs fusion from within analyseMotility ---
         // NOTE: Posture classification is now handled by PostureClassifier
-        // This fusion logic is commented out to avoid redundant posture detection
-        /*
-         * // Note: getPostureNuovo runs on 10 s windows at 1000 Hz (X/Y/Z in m/s^2).
-         * // analyseAltitudeChange returns a per-sample (1000 Hz) label stream derived
-         * // from 5 Hz pressure.
-         * // We fuse by scanning the corresponding 10 s span in the per-sample stairs
-         * // labels.
-         * AltitudeAnalyser.AltitudeAnalysisResult altRes1s =
-         * AltitudeAnalyser.getInstance().analyseAltitudeChange(
-         * sampPres,
-         * stepLocations, 5);
-         * String[] posture10s = getPostureNuovo(sampleMXDouble, sampleMYDouble,
-         * sampleMZDouble, stepLocations);
-         * String[] fused10s = fusePostureWithStairs10s(posture10s, altRes1s.labels);
-         * 
-         * // Cache fused results for this chunk (do not write epoch labels here to
-         * avoid
-         * // duplication).
-         * lastFusedPosture10s.clear();
-         * java.util.Collections.addAll(lastFusedPosture10s, fused10s);
-         */
 
         // get altitude from pressure
         double[] altitude = getAltitudeFromPressure(sampPres);
@@ -1316,139 +1044,4 @@ public class ActivityClassification extends Thread {
         return posture;
     }
 
-    public static List<String> getLastFusedPosture10s() {
-        return new ArrayList<>(lastFusedPosture10s);
-    }
-
-    /**
-     * Fuse 10-second posture labels with per-sample (1000 Hz) stairs labels.
-     * Rules:
-     * - Only override windows that are already Dynamic (LPA/MPA/VPA).
-     * - If any sample within the 10 s window is "Stairs up" -> "Dynamic MPA
-     * Stairs".
-     * - Else if any sample within the 10 s window is "Stairs down" -> "Dynamic LPA
-     * Stairs".
-     * - Static windows remain unchanged.
-     */
-    private static String[] fusePostureWithStairs10s(String[] posture10s, String[] stairs1000Hz) {
-        if (posture10s == null || stairs1000Hz == null)
-            return posture10s;
-        final int Fs = SAMPLING_FREQUENCY; // 1000 Hz
-        final int WINDOW_S = 10; // 10-second posture windows
-        final int SAMPLES_PER_WINDOW = Fs * WINDOW_S; // 10,000 samples
-        String[] out = java.util.Arrays.copyOf(posture10s, posture10s.length);
-        for (int w = 0; w < posture10s.length; w++) {
-            String base = posture10s[w];
-            if (base == null || !base.startsWith("Dynamic "))
-                continue; // only override dynamic
-            int start = w * SAMPLES_PER_WINDOW;
-            if (start >= stairs1000Hz.length)
-                break;
-            int end = Math.min(stairs1000Hz.length, start + SAMPLES_PER_WINDOW);
-            boolean hasUp = false, hasDown = false;
-            for (int i = start; i < end; i++) {
-                String s = stairs1000Hz[i];
-                if (s == null)
-                    continue;
-                if ("Stairs up".equals(s)) {
-                    hasUp = true;
-                    break;
-                }
-                if ("Stairs down".equals(s)) {
-                    hasDown = true;
-                }
-            }
-            if (hasUp)
-                out[w] = "Dynamic MPA StairsUp";
-            else if (hasDown)
-                out[w] = "Dynamic LPA StairsDown";
-        }
-        return out;
-    }
 }
-// UNUSED METHOD - Commented out but kept for reference
-// This method was used for downsampling but is no longer called
-/*
- * static void reduceSamplesize(File filteredFile, File fdzFile, int nToSkip)
- * throws IOException {
- * 
- * if (nToSkip < 1) {
- * nToSkip = 1;
- * }
- * int skipCounter = 0;
- * int[] samp = new int[size / 4];
- * int[] outBuf = new int[size / 4];
- * int nRead = size;
- * long fL = filteredFile.length();
- * 
- * FileInputStream fis = new FileInputStream(filteredFile);
- * // byte[] buf = new byte[(int) fL];
- * // fis.read(buf);
- * // ByteBuffer inBuffer = ByteBuffer.wrap(buf);
- * // fis.close();
- * // IntBuffer sb = inBuffer.asIntBuffer();
- * FileOutputStream fos = new FileOutputStream(fdzFile);
- * int buflength = (int) fL / nToSkip;
- * if (buflength % 4 == 1) {
- * buflength += 3;
- * }
- * if (buflength % 4 == 2) {
- * buflength += 2;
- * }
- * if (buflength % 4 == 3) {
- * buflength += 1;
- * }
- * // byte[] outbuf = new byte[(int) buflength];
- * // ByteBuffer outBuffer = ByteBuffer.wrap(outbuf);
- * // IntBuffer osb = outBuffer.asIntBuffer();
- * FileChannel ifC = fis.getChannel();
- * FileChannel ofC = fos.getChannel();
- * long pos = 0;
- * int cycle = 0, nPerCycle = 0;
- * 
- * for (long i = 0; i < fL; i += nRead) {
- * // int nSRead;
- * // if (sb.capacity() - sb.position() < nRead / 4) {
- * // nSRead = sb.capacity() - sb.position();
- * // } else {
- * // nSRead = nRead / 4;
- * // }
- * bb.position(0);
- * sb.position(0);
- * long newPos = pos;
- * pos += size;
- * if (pos > fL)
- * pos = fL;
- * nRead = (int) (pos - newPos);
- * ifC.read(bb, newPos);
- * int nSRead = nRead / 4;
- * if (nRead < 1) {
- * break;
- * }
- * sb.get(samp, 0, nSRead);
- * int nOut = 0;
- * for (int q = 0; q < nSRead; q++) {
- * skipCounter++;
- * if (skipCounter >= nToSkip) {
- * outBuf[nOut] = samp[q];
- * nOut++;
- * skipCounter = 0;
- * }
- * }
- * if (nPerCycle == 0)
- * nPerCycle = nOut;
- * obb.clear();
- * osb.clear();
- * osb.put(outBuf, 0, nOut);
- * obb.limit(4 * nOut);
- * ofC.write(obb, nPerCycle * cycle * 4);
- * cycle++;
- * }
- * // fos.write(outbuf);
- * ifC.close();
- * fis.close();
- * ofC.close();
- * fos.close();
- * 
- * }
- */
