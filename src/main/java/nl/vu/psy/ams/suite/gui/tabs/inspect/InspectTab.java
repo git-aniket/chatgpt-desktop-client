@@ -168,15 +168,9 @@ public class InspectTab extends AmsTab implements ItemListener, AutoCloseable {
 			lov.setFillFactor(0.25);
 			graph.addOverlay(lov);
 		}
-		if (s.getSzID().equals("Activity")) {
-			LabelSet arts = CurrentOpenData.getInstance().getStairsLabels();
-			LabelOverlay lov = new LabelOverlay(graph);
-			lov.setLabelConfig(AmsLabelConfiguration.getStairsLabelConfiguration());
-			lov.setEditable(false);
-			lov.setLabels(arts);
-			lov.setFillFactor(0.25);
-			graph.addOverlay(lov);
-		}
+		// NOTE: Stairs labels overlay removed - stairs detection is now handled by
+		// StairsClassifier
+		// and will be integrated with posture labels in future work
 		if (s.getSzID().equals("MXR")) {
 			LabelSet arts = CurrentOpenData.getInstance().getPostureLabels();
 			LabelOverlay lov = new LabelOverlay(graph);

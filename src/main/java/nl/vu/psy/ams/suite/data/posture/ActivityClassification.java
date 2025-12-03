@@ -4,12 +4,12 @@ package nl.vu.psy.ams.suite.data.posture;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
-import java.io.FileWriter;
+// import java.io.FileWriter; // Moved to MotionDataUtils
 // import java.io.FileReader;
 // import java.io.FileWriter;
 // import java.io.FileWriter;
 import java.io.IOException;
-import java.io.PrintWriter;
+// import java.io.PrintWriter; // Moved to MotionDataUtils
 // import java.io.PrintWriter;
 import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
@@ -442,27 +442,36 @@ public class ActivityClassification extends Thread {
                     YPosThreshold,
                     fcLying, fc2, fcAlt, 0L);
 
-            // 2) Stairs labels (5 s epochs)
-            int EPOCH_SAMPLES = 5 * FsLocal; // 5-second epochs for stairs
-            AltitudeAnalyser.AltitudeAnalysisResult result = AltitudeAnalyser.getInstance()
-                    .analyseAltitudeChange(allSampPres, stepLocations, 5);
-            String[] sChunk = result.labels;
-            java.util.List<AmsLabel> stairsLabelsToAdd = new java.util.ArrayList<>();
-            for (int e = 0; e < sChunk.length; e++) {
-                long startSample = (long) e * EPOCH_SAMPLES;
-                long endSample = Math.min(totalSamples, startSample + EPOCH_SAMPLES) - 1;
-                if (endSample < startSample)
-                    continue;
-
-                long[] timestamps = calculateTimestamps(startSample, endSample, sampleTimeMicros, globalStartUS);
-                long startUS = timestamps[0];
-                long endUS = timestamps[1];
-
-                stairsLabelsToAdd.add(AmsLabel.generateStairsLabel(startUS, endUS, sChunk[e]));
-                // NOTE: Removed allPostureLabels.add(sChunk[e]) - stairs labels should not be
-                // in posture list
-            }
-            CurrentOpenData.getInstance().getStairsLabels().getLabels().addAll(stairsLabelsToAdd);
+            // NOTE: Stairs detection is now handled by StairsClassifier.java
+            // The code below has been commented out to avoid duplication
+            /*
+             * // 2) Stairs labels (5 s epochs)
+             * int EPOCH_SAMPLES = 5 * FsLocal; // 5-second epochs for stairs
+             * AltitudeAnalyser.AltitudeAnalysisResult result =
+             * AltitudeAnalyser.getInstance()
+             * .analyseAltitudeChange(allSampPres, stepLocations, 5);
+             * String[] sChunk = result.labels;
+             * java.util.List<AmsLabel> stairsLabelsToAdd = new java.util.ArrayList<>();
+             * for (int e = 0; e < sChunk.length; e++) {
+             * long startSample = (long) e * EPOCH_SAMPLES;
+             * long endSample = Math.min(totalSamples, startSample + EPOCH_SAMPLES) - 1;
+             * if (endSample < startSample)
+             * continue;
+             * 
+             * long[] timestamps = calculateTimestamps(startSample, endSample,
+             * sampleTimeMicros, globalStartUS);
+             * long startUS = timestamps[0];
+             * long endUS = timestamps[1];
+             * 
+             * stairsLabelsToAdd.add(AmsLabel.generateStairsLabel(startUS, endUS,
+             * sChunk[e]));
+             * // NOTE: Removed allPostureLabels.add(sChunk[e]) - stairs labels should not
+             * be
+             * // in posture list
+             * }
+             * CurrentOpenData.getInstance().getStairsLabels().getLabels().addAll(
+             * stairsLabelsToAdd);
+             */
 
             // 3) Posture labels (10 s epochs)
             // NOTE: Posture classification is now handled by PostureClassifier
@@ -492,11 +501,8 @@ public class ActivityClassification extends Thread {
         }
 
         if (pressureAvailable) {
-            // Only cleanup stairs labels (posture classification is handled by
-            // PostureClassifier)
-            // cleanupLabels("Activity"); // Commented out - no longer generating activity
-            // labels here
-            cleanupLabels("Stairs");
+            // NOTE: Stairs label cleanup is now handled by StairsClassifier.java
+            // cleanupLabels("Stairs");
         }
 
         // Close output channels
@@ -856,78 +862,8 @@ public class ActivityClassification extends Thread {
         return result;
     }
 
-    /**
-     * Save multiple numeric arrays as tab-separated columns.
-     * Overloads are provided for double[], int[], and boxed Object[] arrays.
-     */
-    public static void saveColumns(String filename, boolean overwrite, double[]... columns) {
-        try (PrintWriter writer = new PrintWriter(new FileWriter(filename, !overwrite))) {
-            int numRows = 0;
-            for (double[] col : columns) {
-                if (col != null && col.length > numRows)
-                    numRows = col.length;
-            }
-            for (int r = 0; r < numRows; r++) {
-                StringBuilder line = new StringBuilder();
-                for (int c = 0; c < columns.length; c++) {
-                    if (columns[c] != null && r < columns[c].length) {
-                        line.append(columns[c][r]);
-                    }
-                    if (c < columns.length - 1)
-                        line.append('\t');
-                }
-                writer.println(line);
-            }
-        } catch (IOException e) {
-            System.err.println("Error writing data to file: " + e.getMessage());
-        }
-    }
-
-    public static void saveColumns(String filename, boolean overwrite, int[]... columns) {
-        try (PrintWriter writer = new PrintWriter(new FileWriter(filename, !overwrite))) {
-            int numRows = 0;
-            for (int[] col : columns) {
-                if (col != null && col.length > numRows)
-                    numRows = col.length;
-            }
-            for (int r = 0; r < numRows; r++) {
-                StringBuilder line = new StringBuilder();
-                for (int c = 0; c < columns.length; c++) {
-                    if (columns[c] != null && r < columns[c].length) {
-                        line.append(columns[c][r]);
-                    }
-                    if (c < columns.length - 1)
-                        line.append('\t');
-                }
-                writer.println(line);
-            }
-        } catch (IOException e) {
-            System.err.println("Error writing data to file: " + e.getMessage());
-        }
-    }
-
-    public static void saveColumns(String filename, boolean overwrite, Object[]... columns) {
-        try (PrintWriter writer = new PrintWriter(new FileWriter(filename, !overwrite))) {
-            int numRows = 0;
-            for (Object[] col : columns) {
-                if (col != null && col.length > numRows)
-                    numRows = col.length;
-            }
-            for (int r = 0; r < numRows; r++) {
-                StringBuilder line = new StringBuilder();
-                for (int c = 0; c < columns.length; c++) {
-                    if (columns[c] != null && r < columns[c].length) {
-                        line.append(String.valueOf(columns[c][r]));
-                    }
-                    if (c < columns.length - 1)
-                        line.append('\t');
-                }
-                writer.println(line);
-            }
-        } catch (IOException e) {
-            System.err.println("Error writing data to file: " + e.getMessage());
-        }
-    }
+    // NOTE: saveColumns methods have been moved to MotionDataUtils.saveColumns()
+    // Use MotionDataUtils.saveColumns(filePath, overwrite, columns) instead
 
     /**
      * method is used to detect steps in the given array using acceleration
