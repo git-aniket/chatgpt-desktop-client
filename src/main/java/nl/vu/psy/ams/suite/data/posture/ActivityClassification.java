@@ -10,10 +10,10 @@ import java.nio.IntBuffer;
 import java.nio.DoubleBuffer;
 import java.nio.channels.FileChannel;
 import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.Iterator;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
-import java.util.Set;
+import java.util.Map;
 
 import nl.vu.psy.ams.suite.data.CurrentOpenData;
 import nl.vu.psy.ams.suite.data.FilteredMotGeneratorFast;
@@ -532,19 +532,34 @@ public class ActivityClassification extends Thread {
         List<String> filteredPostures = MotionDataUtils.getDataInTimeRange(allPostureLabels, leftTime, rightTime,
                 MS_PER_POSTURE_INTERVAL);
 
-        // Collect unique postures
-        Set<String> uniquePostures = new HashSet<>(filteredPostures);
-
-        // Return based on number of unique postures found
-        if (uniquePostures.isEmpty() || uniquePostures.size() > 2) {
+        // Return "Unknown" if no data
+        if (filteredPostures.isEmpty()) {
             return "Unknown";
-        } else if (uniquePostures.size() == 1) {
-            return uniquePostures.iterator().next();
-        } else {
-            // Two postures: combine with "/"
-            Iterator<String> iterator = uniquePostures.iterator();
-            return iterator.next() + "/" + iterator.next();
         }
+
+        // Count frequency of each posture
+        Map<String, Integer> postureFrequency = new HashMap<>();
+        for (String posture : filteredPostures) {
+            postureFrequency.put(posture, postureFrequency.getOrDefault(posture, 0) + 1);
+        }
+
+        // Remove "Unknown" from frequency map if there are other postures
+        if (postureFrequency.size() > 1 && postureFrequency.containsKey("Unknown")) {
+            postureFrequency.remove("Unknown");
+        }
+
+        // Find the most frequent posture
+        // If there's a tie, return the first one that appears in the filtered list
+        int maxFrequency = postureFrequency.values().stream().max(Comparator.naturalOrder()).orElse(0);
+
+        // Find the first posture in the filtered list that has max frequency
+        for (String posture : filteredPostures) {
+            if (postureFrequency.getOrDefault(posture, 0) == maxFrequency) {
+                return posture;
+            }
+        }
+
+        return "Unknown";
     }
 
 }

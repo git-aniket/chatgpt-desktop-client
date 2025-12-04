@@ -92,25 +92,46 @@ public class PostureClassifier {
 
     /**
      * Get posture labels as a timeline for use by ActivityClassification.
-     * Converts posture periods into 6-second interval labels.
+     * Creates a complete timeline from recording start with one label per 6-second
+     * interval.
+     * Each index i in the returned list represents the posture at time interval i *
+     * 6 seconds.
      * 
-     * @return List of posture label strings at 6-second intervals
+     * @return List of posture label strings at 6-second intervals from recording
+     *         start
      */
     public List<String> getPostureLabelsForTimeline() {
         List<String> labels = new ArrayList<>();
-        if (postureTimeline == null) {
+        if (postureTimeline == null || postureTimeline.isEmpty()) {
             return labels;
         }
 
-        // Convert each posture period into 6-second interval labels
+        // Get recording duration from the last posture period
+        PosturePeriod lastPeriod = postureTimeline.get(postureTimeline.size() - 1);
+        long recordingEndMicros = (long) lastPeriod.endTime();
+
+        // Calculate number of 6-second intervals needed
+        final long INTERVAL_MICROS = 6000000; // 6 seconds in microseconds
+        int numIntervals = (int) ((recordingEndMicros + INTERVAL_MICROS - 1) / INTERVAL_MICROS);
+
+        // Initialize all intervals as "Unknown"
+        for (int i = 0; i < numIntervals; i++) {
+            labels.add("Unknown");
+        }
+
+        // Fill in the actual postures
         for (PosturePeriod period : postureTimeline) {
-            long startTime = (long) period.startTime();
-            long endTime = (long) period.endTime();
+            long startMicros = (long) period.startTime();
+            long endMicros = (long) period.endTime();
             String postureName = period.posture().toString();
 
-            // Generate labels at 6-second intervals (6000 ms = 6000000 microseconds)
-            for (long time = startTime; time < endTime; time += 6000000) {
-                labels.add(postureName);
+            // Calculate which intervals this period covers
+            int startInterval = (int) (startMicros / INTERVAL_MICROS);
+            int endInterval = (int) (endMicros / INTERVAL_MICROS);
+
+            // Set the posture for all intervals in this period
+            for (int i = startInterval; i < endInterval && i < numIntervals; i++) {
+                labels.set(i, postureName);
             }
         }
 
