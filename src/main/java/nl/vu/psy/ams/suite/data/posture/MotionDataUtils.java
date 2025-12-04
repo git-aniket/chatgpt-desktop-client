@@ -42,6 +42,14 @@ public class MotionDataUtils {
         return out;
     }
 
+    public static double[] getAltitudeFromPressure(double[] pressure) {
+        double[] altitude = new double[pressure.length];
+        for (int j = 0; j < pressure.length; j++) {
+            altitude[j] = (pressure[j] - 102000.0) / -12.2;
+        }
+        return altitude;
+    }
+
     /**
      * Save multiple columns of data to a tab-separated text file.
      * Supports double[], int[], String[], and Object[] arrays.

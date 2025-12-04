@@ -226,7 +226,7 @@ public class ActivityClassification extends Thread {
 
         // Apply 0.005 Hz high-pass filter to remove gravity and slow drift components
         // This isolates dynamic motion for step detection
-        highPassFilterButt(magnitudeFile, filteredMagnitudeFile);
+        removeGravity(magnitudeFile, filteredMagnitudeFile);
         SubsetFilesSingle ssf2 = new SubsetFilesSingle(filteredMagnitudeFile);
         ssf2.start();
 
@@ -282,28 +282,17 @@ public class ActivityClassification extends Thread {
         int totalSamples = allAccelData.numSamples;
 
         // Read all pressure/temperature data if available
-        double[] allSampTemp = null;
         double[] allSampPres = null;
         if (pressureAvailable) {
             // Pressure/temperature are sampled at 200x slower rate
             int pressureSamples = totalSamples / 200;
-            allSampTemp = new double[pressureSamples];
             allSampPres = new double[pressureSamples];
 
-            try (FileInputStream fisTemp = new FileInputStream(temperatureFile);
-                    FileChannel ifTemp = fisTemp.getChannel();
-                    FileInputStream fisPres = new FileInputStream(pressureFile);
+            try (FileInputStream fisPres = new FileInputStream(pressureFile);
                     FileChannel ifPres = fisPres.getChannel()) {
 
                 ByteBuffer bbP = ByteBuffer.allocateDirect(pressureSamples * 8);
                 DoubleBuffer sbP = bbP.asDoubleBuffer();
-
-                // Read temperature
-                bbP.clear();
-                sbP.clear();
-                ifTemp.read(bbP);
-                bbP.flip();
-                sbP.get(allSampTemp);
 
                 // Read pressure
                 bbP.clear();
@@ -315,20 +304,14 @@ public class ActivityClassification extends Thread {
         }
 
         // Setup output file channels
-        FileOutputStream fos2 = null, fosLying = null, fosAlt = null;
-        FileChannel fc2 = null, fcLying = null, fcAlt = null;
+        FileOutputStream fosLying = null, fosAlt = null;
+        FileChannel fcLying = null, fcAlt = null;
         if (pressureAvailable) {
-            fos2 = new FileOutputStream(catFile);
-            fc2 = fos2.getChannel();
             fosLying = new FileOutputStream(lyingFile);
             fcLying = fosLying.getChannel();
             fosAlt = new FileOutputStream(AltitudeFile);
             fcAlt = fosAlt.getChannel();
         }
-
-        int rawThreshold = AppSettings.getInstance().getIntProperty(Settings.LYINGTHRESHOLD);
-        double threshold = (rawThreshold - chanM.getRealConstant()) / chanM.getRealSlope() / 1000.0;
-        double YPosThreshold = (400 - chanM.getRealConstant()) / chanM.getRealSlope() / 1000.0;
 
         // Channel calibration for counts -> m/s^2 conversion
         Ams7fsChannelInfo chanX = cod.getChannelInfoFromID("MXR");
@@ -348,14 +331,8 @@ public class ActivityClassification extends Thread {
 
             final int FsLocal = SAMPLING_FREQUENCY; // 1000 Hz
 
-            // Detect steps for entire dataset (starts at sample 0)
-            int[] stepLocations = StepDetector.getInstance().detectSteps(dx, dy, dz, 0L,
-                    ActivityClassification::correctForTicks);
-
             // Run analyseMotility for entire dataset
-            analyseMotility(sampMX, sampMY, sampMZ, stepLocations, allSampTemp, allSampPres, 1, threshold,
-                    YPosThreshold,
-                    fcLying, fc2, fcAlt, 0L);
+            analyseMotility(sampMX, sampMY, sampMZ, allSampPres, fcLying, fcAlt, 0L);
 
             // NOTE: Stairs detection is now handled by StairsClassifier.java
 
@@ -365,10 +342,6 @@ public class ActivityClassification extends Thread {
         // NOTE: Stairs label cleanup is now handled by StairsClassifier.java
 
         // Close output channels
-        if (fc2 != null)
-            fc2.close();
-        if (fos2 != null)
-            fos2.close();
         if (fcLying != null)
             fcLying.close();
         if (fosLying != null)
@@ -399,7 +372,7 @@ public class ActivityClassification extends Thread {
      * @param inFile  Input file containing integer samples
      * @param outFile Output file for filtered samples
      */
-    public static void highPassFilterButt(File inFile, File outFile) {
+    public static void removeGravity(File inFile, File outFile) {
         try {
             // Read all samples from input file
             int numSamples = (int) (inFile.length() / 4); // 4 bytes per int
@@ -447,29 +420,8 @@ public class ActivityClassification extends Thread {
         }
     }
 
-    private static double[] getAltitudeFromPressure(double[] pressure) {
-        double[] altitude = new double[pressure.length];
-        for (int j = 0; j < pressure.length; j++) {
-            altitude[j] = (pressure[j] - 102000.0) / -12.2;
-        }
-        return altitude;
-    }
-
-    public static double[] diff(double[] array) {
-        double[] result = new double[array.length - 1];
-        for (int i = 0; i < array.length - 1; i++) {
-            result[i] = array[i + 1] - array[i];
-        }
-        return result;
-    }
-
-    // NOTE: saveColumns methods have been moved to MotionDataUtils.saveColumns()
-    // Use MotionDataUtils.saveColumns(filePath, overwrite, columns) instead
-
-    public static double analyseMotility(int[] sampMX, int[] sampMY, int[] sampMZ, int[] stepLocations,
-            double sampTemp[], double sampPres[],
-            int analysisWindowSize, double threshold, double thresholdLow, FileChannel fosLying,
-            FileChannel fosCat, FileChannel fosAlt, long startSampleAbsolute) {
+    public static double analyseMotility(int[] sampMX, int[] sampMY, int[] sampMZ,
+            double sampPres[], FileChannel fosLying, FileChannel fosAlt, long startSampleAbsolute) {
 
         // Use identical calibrated acceleration (counts -> m/s^2) as step detection
         // Get per-axis channel calibration
@@ -524,7 +476,7 @@ public class ActivityClassification extends Thread {
         // NOTE: Posture classification is now handled by PostureClassifier
 
         // get altitude from pressure
-        double[] altitude = getAltitudeFromPressure(sampPres);
+        double[] altitude = MotionDataUtils.getAltitudeFromPressure(sampPres);
 
         try {
             byte[] outbuf = new byte[size * 2];
