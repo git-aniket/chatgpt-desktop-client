@@ -367,7 +367,7 @@ public class InspectTab extends AmsTab implements ItemListener, AutoCloseable {
 		P_sc("P_sc", "Barometric pressure (hPa)", "QC"),
 		SCL("SCL", "Skin conductance (\u00B5S)", "Other"),
 		MYA("MYA", "Average motility (g)", "Other"),
-		AccelVectorMag("AccelVectorMag", "Steps", "Other"),
+		AccelVectorMag("AccelVectorMag", "Steps & Acceleration Vector Magnitude", "Other"),
 		MotilityIntensity("MotilityIntensity", "Motility (MADxyz (millig))", "Other"),
 		Altitude("Altitude", "Relative altitude (m)", "Other"),
 		VIS("Pos Visualization", "Pos Visualization", "Other");
