@@ -11,6 +11,7 @@ import java.nio.channels.FileChannel;
 import javax.swing.JFrame;
 import javax.swing.ProgressMonitor;
 
+import nl.vu.psy.ams.suite.data.posture.ZeroPhaseFilter;
 import nl.vu.psy.ams.suite.data.structures.file7fs.Ams7fsChannelInfo;
 import nl.vu.psy.ams.suite.gui.MainFrame;
 import nl.vu.psy.ams.suite.main.AppSettings;
@@ -28,21 +29,10 @@ import nl.vu.psy.ams.suite.tools.Timer;
  *  To test use filtsignal = filtfilt(b,a,x) instead of filt(b,a,x)
  */
 public class FilteredMotGeneratorFast {
-	private FileChannel ifC;
-	private FileChannel ofC;
-	ByteBuffer bb;
-	IntBuffer sb;
-	ByteBuffer obb;
-	IntBuffer osb;
-	int[] samp;
-	int[] outBuf;
-	double[] tempBuf;
-	double[] backBuffer = new double[4];
-	double[] forBuffer = new double[4];
-	double[] bBackBuffer = new double[4];
-	double[] bForBuffer = new double[4];
 	double realSlope = 1;
 	double realConstant = 0;
+	int[] samp;
+	int[] outBuf;
 
 	public void GenerateFilteredMot(String channel) {
 
@@ -85,61 +75,44 @@ public class FilteredMotGeneratorFast {
 				e.printStackTrace();
 			}
 
-			double[] b = null;
-			double[] a = null;
+			// Determine sampling frequency and filter parameters
+			int samplingFreqHz = 1000000 / sampleTimeInUS; // Convert from microseconds to Hz
+			int filterOrder = 2;
+			double lowPassCutoffHz;
+			double bandPassLowHz;
+			double bandPassHighHz;
 
-			// cut-off frequency 5 Hz
-			// if (sampleTimeInUS == 1000) { // Sampling time is 1 ms = 1000 us, 1000 Hz
-			// a = new double[] { 1, -1.9555778328194147, 0.9565432688144089 };
-			// b = new double[] { 0.00024135899874854145, 0.0004827179974970829,
-			// 0.00024135899874854145 };
-			// }
-			// if (sampleTimeInUS == 20000) { // Sampling time is 20 ms = 20000 us, 50 Hz
-			// a = new double[] { 1, -1.1429772843080923, 0.41279762014290533 };
-			// b = new double[] { 0.06745508395870334, 0.13491016791740668,
-			// 0.06745508395870334 };
-			// }
-
-			// cut-off frequency 20 Hz
-			if (sampleTimeInUS == 1000) { // [b,a] = butter(2, 0.04, 'low')
-				a = new double[] { 1, -1.822694925196308, 0.837181651256023 };
-				b = new double[] { 0.003621681514929, 0.007243363029857, 0.003621681514929 };
+			// Set filter parameters based on sampling rate
+			if (sampleTimeInUS == 1000) { // 1000 Hz
+				lowPassCutoffHz = 20.0; // 20 Hz cutoff
+				bandPassLowHz = 0.01; // 0.01 Hz
+				bandPassHighHz = 3.5; // 3.5 Hz
+			} else if (sampleTimeInUS == 20000) { // 50 Hz
+				lowPassCutoffHz = 20.0; // 20 Hz cutoff (same as before)
+				bandPassLowHz = 0.01; // 0.01 Hz
+				bandPassHighHz = 3.5; // 3.5 Hz
+			} else {
+				// Default values
+				lowPassCutoffHz = 20.0;
+				bandPassLowHz = 0.01;
+				bandPassHighHz = 3.5;
 			}
-			if (sampleTimeInUS == 20000) { // [b,a] = butter(2, 0.8, 'low')
-				a = new double[] { 1, 1.142980502539901, 0.412801598096189 };
-				b = new double[] { 0.638945525159022, 1.277891050318045, 0.638945525159022 };
-			}
-
-			if (b == null || a == null)
-				return;
 
 			long fL = inFile.length();
 			JFrame frame = MainFrame.getInstance().getMainFrame();
 			ProgressMonitor progress = new ProgressMonitor(frame, "Generating Filtered " + channel, null, 0, (int) fL);
 
-			filterForAndBackward(a, b, inFile, filtFile, progress);
+			// Apply low-pass filter using ZeroPhaseFilter to display the filtered
+			applyZeroPhaseFilterToFile(inFile, filtFile, samplingFreqHz, filterOrder, lowPassCutoffHz,
+					FilterType.LOW_PASS, progress);
 			SubsetFilesSingle ssf1 = new SubsetFilesSingle(filtFile);
 			ssf1.start();
-			// Aniket for step detection: [b, a] = butter(2,[0.01/500, 3.5/500], "bandpass")
-			backBuffer = new double[4];
-			forBuffer = new double[4];
-			bBackBuffer = new double[4];
-			bForBuffer = new double[4];
-			bb.clear();
-			obb.clear();
-			sb.clear();
-			osb.clear();
-			a = new double[] { 1, -3.968988363243609, 5.907441364711835,
-					-3.907917597495268, 0.969464596028921 };
-			b = new double[] { 1.0e-03 * 0.118372652424925, 0, 1.0e-03 * -0.236745304849850, 0,
-					1.0e-03 * 0.118372652424925 };
-			filterForAndBackward(a, b, inFile, filtStepFile, progress);
+
+			// Apply bandpass filter for step detection using ZeroPhaseFilter
+			applyZeroPhaseFilterToFile(inFile, filtStepFile, samplingFreqHz, filterOrder, bandPassLowHz,
+					bandPassHighHz, FilterType.BAND_PASS, progress);
 
 			progress.close();
-			/*
-			 * frame.toFront();
-			 * frame.requestFocus();
-			 */
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
@@ -149,106 +122,89 @@ public class FilteredMotGeneratorFast {
 			System.out.println("filter " + channel + " took (" + timer.getTime() / 1000. + " sec)");
 	}
 
-	void filterForAndBackward(double[] a, double[] b, File inFile, File tempFile, ProgressMonitor progress)
-			throws IOException {
+	private enum FilterType {
+		LOW_PASS, BAND_PASS
+	}
+
+	/**
+	 * Apply zero-phase filter to a file using ZeroPhaseFilter from posture package.
+	 * Reads binary file, converts to physical units, applies filter, and writes
+	 * back.
+	 */
+	private void applyZeroPhaseFilterToFile(File inFile, File outFile, int samplingFreqHz, int order,
+			double cutoffHz, FilterType filterType, ProgressMonitor progress) throws IOException {
+		applyZeroPhaseFilterToFile(inFile, outFile, samplingFreqHz, order, cutoffHz, 0, filterType, progress);
+	}
+
+	/**
+	 * Apply zero-phase filter to a file using ZeroPhaseFilter from posture package.
+	 * Supports both low-pass and band-pass filters.
+	 */
+	private void applyZeroPhaseFilterToFile(File inFile, File outFile, int samplingFreqHz, int order,
+			double param1, double param2, FilterType filterType, ProgressMonitor progress) throws IOException {
+
 		int size = (int) inFile.length();
-		bb = ByteBuffer.allocateDirect(size);
-		sb = bb.asIntBuffer();
-		obb = ByteBuffer.allocateDirect(size);
-		osb = obb.asIntBuffer();
+		int nSamples = size / 4;
 
-		samp = new int[size / 4];
-		outBuf = new int[size / 4];
-		tempBuf = new double[size / 4];
-		FileInputStream fis = new FileInputStream(inFile);
-		FileOutputStream fos = new FileOutputStream(tempFile);
-		ifC = fis.getChannel();
-		ofC = fos.getChannel();
+		// Read input file
+		samp = new int[nSamples];
+		try (FileInputStream fis = new FileInputStream(inFile);
+				FileChannel channel = fis.getChannel()) {
+			ByteBuffer buffer = ByteBuffer.allocateDirect(size);
+			IntBuffer intBuffer = buffer.asIntBuffer();
+			channel.read(buffer);
+			intBuffer.get(samp, 0, nSamples);
+		}
 
-		int nRead = size;
-		int nOut;
-
-		bb.position(0);
-		sb.position(0);
-		nRead = ifC.read(bb);
-		int nSRead = nRead / 4;
-		if (nRead < 1) {
-			ofC.close();
-			ifC.close();
-			fis.close();
-			fos.close();
+		if (nSamples < 1) {
 			return;
 		}
-		sb.get(samp, 0, nSRead);
-		double vl = realConstant + realSlope * samp[0];
-		for (int q = 0; q < backBuffer.length; q++)
-			backBuffer[q] = vl;
-		for (int q = 0; q < forBuffer.length; q++)
-			forBuffer[q] = vl;
-		int progressIncrement = nSRead / 10;
-		for (int q = 0; q < nSRead; q++) {
-			if (q % progressIncrement == 0) {
-				progress.setProgress((int) q / 2);
-			}
-			vl = realConstant + realSlope * samp[q];
-			double val = vl * b[0];
-			for (int z = 0; z < b.length - 1; z++)
-				val += backBuffer[z] * b[z + 1];
-			for (int z = 0; z < a.length - 1; z++)
-				val -= forBuffer[z] * a[z + 1];
-			for (int z = 0; z < backBuffer.length - 1; z++)
-				backBuffer[3 - z] = backBuffer[2 - z];
-			for (int z = 0; z < forBuffer.length - 1; z++)
-				forBuffer[3 - z] = forBuffer[2 - z];
-			backBuffer[0] = vl;
-			forBuffer[0] = val;
 
-			tempBuf[q] = val;
+		// Convert to physical units (double)
+		double[] signal = new double[nSamples];
+		for (int i = 0; i < nSamples; i++) {
+			signal[i] = realConstant + realSlope * samp[i];
+			if (i % (nSamples / 10 + 1) == 0) {
+				progress.setProgress(i / 2);
+			}
 		}
 
-		vl = tempBuf[nSRead - 1];
-		for (int q = 0; q < bBackBuffer.length; q++)
-			bBackBuffer[q] = vl;
-		for (int q = 0; q < bForBuffer.length; q++)
-			bForBuffer[q] = vl;
-		for (int q = 0; q < nSRead; q++) {
-			if (q % progressIncrement == 0) {
-				progress.setProgress(size / 2 + (int) q / 2);
-			}
-			vl = tempBuf[nSRead - q - 1];
-			double val = vl * b[b.length - 1];
-			for (int z = 0; z < b.length - 1; z++)
-				val += bBackBuffer[z] * b[z + 1];
-			for (int z = 0; z < a.length - 1; z++)
-				val -= bForBuffer[z] * a[z + 1];
-			for (int z = 0; z < bBackBuffer.length - 1; z++)
-				bBackBuffer[3 - z] = bBackBuffer[2 - z];
-			for (int z = 0; z < bForBuffer.length - 1; z++)
-				bForBuffer[3 - z] = bForBuffer[2 - z];
-			bBackBuffer[0] = vl;
-			bForBuffer[0] = val;
-			double newVal = ((val - realConstant) / realSlope);
-			int shortVal = (int) newVal;
+		// Apply zero-phase filtering using ZeroPhaseFilter from posture package
+		double[] filtered;
+		if (filterType == FilterType.LOW_PASS) {
+			filtered = ZeroPhaseFilter.zeroPhaseLowPassFilterJDSP(
+					signal, order, param1, samplingFreqHz);
+		} else { // BAND_PASS
+			filtered = ZeroPhaseFilter.zeroPhaseBandPassFilterJDSP(
+					signal, order, param1, param2, samplingFreqHz);
+		}
+
+		// Convert back to integer counts
+		outBuf = new int[nSamples];
+		for (int i = 0; i < nSamples; i++) {
+			double newVal = (filtered[i] - realConstant) / realSlope;
+			int intVal = (int) Math.round(newVal);
 
 			if (newVal < Integer.MIN_VALUE) {
-				shortVal = Integer.MIN_VALUE;
+				intVal = Integer.MIN_VALUE;
 			} else if (newVal > Integer.MAX_VALUE) {
-				shortVal = Integer.MAX_VALUE;
+				intVal = Integer.MAX_VALUE;
 			}
 
-			outBuf[nSRead - q - 1] = shortVal;
+			outBuf[i] = intVal;
+			if (i % (nSamples / 10 + 1) == 0) {
+				progress.setProgress(size / 2 + i / 2);
+			}
 		}
-		nOut = nSRead;
 
-		obb.clear();
-		osb.clear();
-		osb.put(outBuf, 0, nOut);
-		obb.limit(4 * nOut);
-		ofC.write(obb);
-
-		ofC.close();
-		ifC.close();
-		fis.close();
-		fos.close();
+		// Write output file
+		try (FileOutputStream fos = new FileOutputStream(outFile);
+				FileChannel channel = fos.getChannel()) {
+			ByteBuffer buffer = ByteBuffer.allocateDirect(size);
+			IntBuffer intBuffer = buffer.asIntBuffer();
+			intBuffer.put(outBuf, 0, nSamples);
+			buffer.limit(4 * nSamples);
+			channel.write(buffer);
+		}
 	}
 }
