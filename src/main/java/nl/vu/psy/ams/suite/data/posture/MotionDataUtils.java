@@ -6,6 +6,14 @@ import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.nio.ByteBuffer;
+import java.nio.DoubleBuffer;
+import java.nio.FloatBuffer;
+import java.nio.IntBuffer;
+import java.nio.LongBuffer;
+import java.nio.channels.FileChannel;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Utility class for motion data processing.
@@ -42,12 +50,201 @@ public class MotionDataUtils {
         return out;
     }
 
+    /**
+     * Convert raw accelerometer counts to m/s^2 using channel calibration lookup.
+     * Convenience overload that looks up channel info by ID.
+     * 
+     * @param raw       Raw accelerometer counts
+     * @param channelId Channel ID for calibration lookup (e.g., "MXR", "MYR",
+     *                  "MZR")
+     * @return Acceleration in m/s^2, or null if channel lookup fails
+     */
+    public static double[] toMs2(int[] raw, String channelId) {
+        try {
+            Ams7fsChannelInfo channelInfo = nl.vu.psy.ams.suite.data.CurrentOpenData.getInstance()
+                    .getChannelInfoFromID(channelId);
+            return toMs2(raw, channelInfo);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return null;
+        }
+    }
+
     public static double[] getAltitudeFromPressure(double[] pressure) {
         double[] altitude = new double[pressure.length];
         for (int j = 0; j < pressure.length; j++) {
             altitude[j] = (pressure[j] - 102000.0) / -12.2;
         }
         return altitude;
+    }
+
+    /**
+     * Generic helper to filter time-based data within a specified time range.
+     * Uses midpoint-based filtering to include only intervals where at least half
+     * falls within the range.
+     * 
+     * @param <T>        Type of data in the list
+     * @param data       List of time-based data (one element per interval)
+     * @param leftTime   Start time in microseconds
+     * @param rightTime  End time in microseconds
+     * @param intervalMs Interval duration in milliseconds (e.g., 60000 for 1
+     *                   minute)
+     * @return List of data elements whose midpoints fall within the time range
+     */
+    public static <T> List<T> getDataInTimeRange(List<T> data, double leftTime, double rightTime, int intervalMs) {
+        // Convert to milliseconds and adjust for recording start time
+        double rightTimeMs = (rightTime / 1000) - nl.vu.psy.ams.suite.data.CurrentOpenData.getInstance()
+                .getStarts().get(0).getDwClockTick_ms();
+        double leftTimeMs = (leftTime / 1000) - nl.vu.psy.ams.suite.data.CurrentOpenData.getInstance()
+                .getStarts().get(0).getDwClockTick_ms();
+
+        List<T> result = new ArrayList<>();
+        int halfInterval = intervalMs / 2;
+
+        for (int i = 0; i < data.size(); i++) {
+            // Calculate midpoint of this interval
+            int midpoint = i * intervalMs + halfInterval;
+
+            // Skip intervals before the time range
+            if (midpoint < leftTimeMs)
+                continue;
+
+            // Stop when past the time range
+            if (midpoint > rightTimeMs)
+                break;
+
+            result.add(data.get(i));
+        }
+
+        return result;
+    }
+
+    /**
+     * Write a List of numeric values to a FileChannel as binary data.
+     * Supports Double, Integer, Float, and Long.
+     * 
+     * @param data    List of numeric values to write
+     * @param channel FileChannel to write to
+     * @throws IOException if write operation fails
+     */
+    public static void writeToBinaryChannel(List<? extends Number> data, FileChannel channel) throws IOException {
+        if (data == null || data.isEmpty()) {
+            return;
+        }
+
+        // Determine type from first element and write accordingly
+        Number first = data.get(0);
+        switch (first) {
+            case Double d -> {
+                ByteBuffer buffer = ByteBuffer.allocate(data.size() * 8);
+                DoubleBuffer doubleBuffer = buffer.asDoubleBuffer();
+                for (Number value : data) {
+                    doubleBuffer.put(value.doubleValue());
+                }
+                buffer.limit(data.size() * 8);
+                channel.write(buffer);
+            }
+            case Integer i -> {
+                ByteBuffer buffer = ByteBuffer.allocate(data.size() * 4);
+                IntBuffer intBuffer = buffer.asIntBuffer();
+                for (Number value : data) {
+                    intBuffer.put(value.intValue());
+                }
+                buffer.limit(data.size() * 4);
+                channel.write(buffer);
+            }
+            case Float f -> {
+                ByteBuffer buffer = ByteBuffer.allocate(data.size() * 4);
+                FloatBuffer floatBuffer = buffer.asFloatBuffer();
+                for (Number value : data) {
+                    floatBuffer.put(value.floatValue());
+                }
+                buffer.limit(data.size() * 4);
+                channel.write(buffer);
+            }
+            case Long l -> {
+                ByteBuffer buffer = ByteBuffer.allocate(data.size() * 8);
+                LongBuffer longBuffer = buffer.asLongBuffer();
+                for (Number value : data) {
+                    longBuffer.put(value.longValue());
+                }
+                buffer.limit(data.size() * 8);
+                channel.write(buffer);
+            }
+            default -> throw new IllegalArgumentException("Unsupported data type: " + first.getClass().getName());
+        }
+    }
+
+    /**
+     * Write an array of doubles to a FileChannel as binary data.
+     * 
+     * @param data    Array of double values to write
+     * @param channel FileChannel to write to
+     * @throws IOException if write operation fails
+     */
+    public static void writeToBinaryChannel(double[] data, FileChannel channel) throws IOException {
+        if (data == null || data.length == 0) {
+            return;
+        }
+        ByteBuffer buffer = ByteBuffer.allocate(data.length * 8);
+        DoubleBuffer doubleBuffer = buffer.asDoubleBuffer();
+        doubleBuffer.put(data);
+        buffer.limit(data.length * 8);
+        channel.write(buffer);
+    }
+
+    /**
+     * Write an array of integers to a FileChannel as binary data.
+     * 
+     * @param data    Array of int values to write
+     * @param channel FileChannel to write to
+     * @throws IOException if write operation fails
+     */
+    public static void writeToBinaryChannel(int[] data, FileChannel channel) throws IOException {
+        if (data == null || data.length == 0) {
+            return;
+        }
+        ByteBuffer buffer = ByteBuffer.allocate(data.length * 4);
+        IntBuffer intBuffer = buffer.asIntBuffer();
+        intBuffer.put(data);
+        buffer.limit(data.length * 4);
+        channel.write(buffer);
+    }
+
+    /**
+     * Write an array of floats to a FileChannel as binary data.
+     * 
+     * @param data    Array of float values to write
+     * @param channel FileChannel to write to
+     * @throws IOException if write operation fails
+     */
+    public static void writeToBinaryChannel(float[] data, FileChannel channel) throws IOException {
+        if (data == null || data.length == 0) {
+            return;
+        }
+        ByteBuffer buffer = ByteBuffer.allocate(data.length * 4);
+        FloatBuffer floatBuffer = buffer.asFloatBuffer();
+        floatBuffer.put(data);
+        buffer.limit(data.length * 4);
+        channel.write(buffer);
+    }
+
+    /**
+     * Write an array of longs to a FileChannel as binary data.
+     * 
+     * @param data    Array of long values to write
+     * @param channel FileChannel to write to
+     * @throws IOException if write operation fails
+     */
+    public static void writeToBinaryChannel(long[] data, FileChannel channel) throws IOException {
+        if (data == null || data.length == 0) {
+            return;
+        }
+        ByteBuffer buffer = ByteBuffer.allocate(data.length * 8);
+        LongBuffer longBuffer = buffer.asLongBuffer();
+        longBuffer.put(data);
+        buffer.limit(data.length * 8);
+        channel.write(buffer);
     }
 
     /**

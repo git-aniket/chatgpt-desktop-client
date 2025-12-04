@@ -1750,27 +1750,33 @@ public class AmsLabel implements Comparable<AmsLabel> {
 	}
 
 	public Double getAverageMETBrageN() {
-		return ActivityClassification.getAverageMET(leftTime, rightTime);
+		return ActivityClassification.getAverageActivityMetric(leftTime, rightTime,
+				ActivityClassification.METRIC_MET_BRAGE_NONBRANCHED);
 	}
 
 	public Double getAverageMETBrageB() {
-		return ActivityClassification.getAverageMET(leftTime, rightTime, 4);
+		return ActivityClassification.getAverageActivityMetric(leftTime, rightTime,
+				ActivityClassification.METRIC_MET_BRAGE_BRANCHED);
 	}
 
 	public Double getAverageMETFreedson() {
-		return ActivityClassification.getAverageMET(leftTime, rightTime, 5);
+		return ActivityClassification.getAverageActivityMetric(leftTime, rightTime,
+				ActivityClassification.METRIC_MET_FREEDSON);
 	}
 
 	public Double getAverageMADxyz() {
-		return ActivityClassification.getAverageMET(leftTime, rightTime, 1);
+		return ActivityClassification.getAverageActivityMetric(leftTime, rightTime,
+				ActivityClassification.METRIC_MAD_XYZ);
 	}
 
 	public Double getAverageMAD() {
-		return ActivityClassification.getAverageMET(leftTime, rightTime, 2);
+		return ActivityClassification.getAverageActivityMetric(leftTime, rightTime,
+				ActivityClassification.METRIC_MAD);
 	}
 
 	public Double getAverageSpeech() {
-		return ActivityClassification.getAverageMET(leftTime, rightTime, 3);
+		return ActivityClassification.getAverageActivityMetric(leftTime, rightTime,
+				ActivityClassification.METRIC_SPEECH);
 	}
 
 	public String getPosture() {

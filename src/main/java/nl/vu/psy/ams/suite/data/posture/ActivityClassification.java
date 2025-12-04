@@ -20,7 +20,6 @@ import nl.vu.psy.ams.suite.data.FilteredMotGeneratorFast;
 import nl.vu.psy.ams.suite.data.SubsetFilesSingle;
 import nl.vu.psy.ams.suite.data.files.BinaryFile;
 
-import nl.vu.psy.ams.suite.data.structures.file7fs.Ams7fsChannelInfo;
 import nl.vu.psy.ams.suite.gui.MainFrame;
 import nl.vu.psy.ams.suite.main.AppSettings;
 import nl.vu.psy.ams.suite.main.AppSettings.Settings;
@@ -247,32 +246,28 @@ public class ActivityClassification extends Thread {
             pressureAvailable = false;
         }
         File catFile = new File(cod.getFilePath(), "Activity.bin");
-        File lyingFile = new File(cod.getFilePath(), "MotilityIntensity.dbin");
+        File motilityIntensityFile = new File(cod.getFilePath(), "MotilityIntensity.dbin");
         File AltitudeFile = new File(cod.getFilePath(), "Altitude.dbin");
 
-        if (/* catFile.exists() && */ lyingFile.exists() && AltitudeFile.exists() // &&
-                                                                                  // cod.channelExists("Activity")
-                && cod.channelExists("MotilityIntensity") && cod.channelExists("Altitude")
-        /* && !CurrentOpenData.getInstance().getPostureLabels().getLabels().isEmpty() */)
+        if (motilityIntensityFile.exists() &&
+                AltitudeFile.exists() &&
+                cod.channelExists("MotilityIntensity") &&
+                cod.channelExists("Altitude"))
             return;
 
-        Ams7fsChannelInfo chanM = cod.getChannelInfoFromID("MXR");
         if (pressureAvailable) {
             cod.dirtyFiles.add(catFile);
-            cod.dirtyFiles.add(lyingFile);
+            cod.dirtyFiles.add(motilityIntensityFile);
             cod.dirtyFiles.add(AltitudeFile);
         }
-        // reduce sample size for accel x,y,z, and gyro x,y,z
         File fAccelX = new File(tempDir, "FILTMXR.bin");
         File fAccelY = new File(tempDir, "FILTMYR.bin");
         File fAccelZ = new File(tempDir, "FILTMZR.bin");
-        File temperatureFile = new File(tempDir, "FILTT_sc.dbin");
         File pressureFile = new File(tempDir, "FILTP_sc.dbin");
         if (tickFile.exists())
             is = new RandomAccessFile(tickFile, "r");
 
         // === DIRECT READING: Load all data at once ===
-        // Read all accelerometer data
         AccelerometerDataReader.AccelData allAccelData = AccelerometerDataReader.readAllAsIntegers(
                 fAccelX, fAccelY, fAccelZ);
 
@@ -304,48 +299,27 @@ public class ActivityClassification extends Thread {
         }
 
         // Setup output file channels
-        FileOutputStream fosLying = null, fosAlt = null;
-        FileChannel fcLying = null, fcAlt = null;
+        FileOutputStream fosMotility = null, fosAlt = null;
+        FileChannel fcMotility = null, fcAlt = null;
         if (pressureAvailable) {
-            fosLying = new FileOutputStream(lyingFile);
-            fcLying = fosLying.getChannel();
+            fosMotility = new FileOutputStream(motilityIntensityFile);
+            fcMotility = fosMotility.getChannel();
             fosAlt = new FileOutputStream(AltitudeFile);
             fcAlt = fosAlt.getChannel();
         }
 
-        // Channel calibration for counts -> m/s^2 conversion
-        Ams7fsChannelInfo chanX = cod.getChannelInfoFromID("MXR");
-        Ams7fsChannelInfo chanY = cod.getChannelInfoFromID("MYR");
-        Ams7fsChannelInfo chanZ = cod.getChannelInfoFromID("MZR");
         CurrentOpenData.getInstance().getPostureLabels().clear();
 
         // === PROCESS ALL DATA AT ONCE ===
         if (pressureAvailable) {
-            // Convert raw counts to physical units (m/s^2)
-            double[] dx = MotionDataUtils.toMs2(sampMX, chanX);
-            double[] dy = MotionDataUtils.toMs2(sampMY, chanY);
-            double[] dz = MotionDataUtils.toMs2(sampMZ, chanZ);
-
-            long globalStartUS = CurrentOpenData.getInstance().getStartTimeInUS();
-            int sampleTimeMicros = 1000; // 1000 Hz = 1000 microseconds per sample
-
-            final int FsLocal = SAMPLING_FREQUENCY; // 1000 Hz
-
-            // Run analyseMotility for entire dataset
-            analyseMotility(sampMX, sampMY, sampMZ, allSampPres, fcLying, fcAlt, 0L);
-
-            // NOTE: Stairs detection is now handled by StairsClassifier.java
-
-            // NOTE: Posture classification is now handled by PostureClassifier
+            analyseMotility(sampMX, sampMY, sampMZ, allSampPres, fcMotility, fcAlt, 0L);
         }
 
-        // NOTE: Stairs label cleanup is now handled by StairsClassifier.java
-
         // Close output channels
-        if (fcLying != null)
-            fcLying.close();
-        if (fosLying != null)
-            fosLying.close();
+        if (fcMotility != null)
+            fcMotility.close();
+        if (fosMotility != null)
+            fosMotility.close();
         if (fcAlt != null)
             fcAlt.close();
         if (fosAlt != null)
@@ -357,7 +331,7 @@ public class ActivityClassification extends Thread {
         if (pressureAvailable) {
             SubsetFilesSingle ssf1 = new SubsetFilesSingle(catFile);
             ssf1.start();
-            SubsetFilesSingle ssf2 = new SubsetFilesSingle(lyingFile);
+            SubsetFilesSingle ssf2 = new SubsetFilesSingle(motilityIntensityFile);
             ssf2.start();
             SubsetFilesSingle ssf3 = new SubsetFilesSingle(AltitudeFile);
             ssf3.start();
@@ -420,92 +394,56 @@ public class ActivityClassification extends Thread {
         }
     }
 
-    public static double analyseMotility(int[] sampMX, int[] sampMY, int[] sampMZ,
-            double sampPres[], FileChannel fosLying, FileChannel fosAlt, long startSampleAbsolute) {
+    /**
+     * Analyze motion data to calculate physical activity metrics and write results
+     * to binary files.
+     * 
+     * @param sampMX              Raw X-axis accelerometer samples
+     * @param sampMY              Raw Y-axis accelerometer samples
+     * @param sampMZ              Raw Z-axis accelerometer samples
+     * @param sampPres            Pressure sensor samples
+     * @param fcMotility          FileChannel for writing motility intensity data
+     * @param fcAlt               FileChannel for writing altitude data
+     * @param startSampleAbsolute Absolute sample index for timestamp calculation
+     */
+    public static void analyseMotility(int[] sampMX, int[] sampMY, int[] sampMZ,
+            double[] sampPres, FileChannel fcMotility, FileChannel fcAlt, long startSampleAbsolute) {
 
-        // Use identical calibrated acceleration (counts -> m/s^2) as step detection
-        // Get per-axis channel calibration
-        Ams7fsChannelInfo chanXLoc = null;
-        Ams7fsChannelInfo chanYLoc = null;
-        Ams7fsChannelInfo chanZLoc = null;
-        try {
-            chanXLoc = CurrentOpenData.getInstance().getChannelInfoFromID("MXR");
-            chanYLoc = CurrentOpenData.getInstance().getChannelInfoFromID("MYR");
-            chanZLoc = CurrentOpenData.getInstance().getChannelInfoFromID("MZR");
-        } catch (Exception e) {
-            e.printStackTrace();
-            return 0.0;
+        // Convert accelerometer counts to m/s^2
+        double[] accelX = MotionDataUtils.toMs2(sampMX, "MXR");
+        double[] accelY = MotionDataUtils.toMs2(sampMY, "MYR");
+        double[] accelZ = MotionDataUtils.toMs2(sampMZ, "MZR");
+
+        if (accelX == null || accelY == null || accelZ == null) {
+            return; // Channel calibration failed
         }
 
-        // Find the shortest common length and convert once
-        int minLength = Math.min(sampMX.length, Math.min(sampMY.length, sampMZ.length));
-        double[] sampleMXDouble = MotionDataUtils.toMs2(java.util.Arrays.copyOf(sampMX, minLength), chanXLoc);
-        double[] sampleMYDouble = MotionDataUtils.toMs2(java.util.Arrays.copyOf(sampMY, minLength), chanYLoc);
-        double[] sampleMZDouble = MotionDataUtils.toMs2(java.util.Arrays.copyOf(sampMZ, minLength), chanZLoc);
+        // Calculate physical activity metrics
+        long startTime = (tickFile != null && tickFile.exists())
+                ? correctForTicks(startSampleAbsolute)
+                : startSampleAbsolute;
 
-        // **********************************************************************/
+        PhysicalActivityCalculator calc = PhysicalActivityCalculator.getInstance();
+        calc.setAccelerometerData(accelX, accelY, accelZ);
 
-        // Use absolute sample index directly, with optional tick correction
-        long startTime = startSampleAbsolute;
-        if (tickFile != null && tickFile.exists()) {
-            startTime = correctForTicks(startTime);
-        }
+        // Estimate METs using different methods and accumulate results
+        allMETsBB.addAll(calc.estimateMETs(startTime * 1000, PhysicalActivityCalculator.Method.BRAGE_NONBRANCHED));
+        allMETsBNB.addAll(calc.estimateMETs(startTime * 1000, PhysicalActivityCalculator.Method.BRAGE_BRANCHED));
+        allMETsF.addAll(calc.estimateMETs(startTime * 1000, PhysicalActivityCalculator.Method.FREEDSON));
 
-        PhysicalActivityCalculator PAcalc = PhysicalActivityCalculator.getInstance();
-        PAcalc.setAccelerometerData(sampleMXDouble, sampleMYDouble, sampleMZDouble);
+        List<Double> MADxyz = calc.calculateMADxyz();
+        allMADxyz.addAll(MADxyz);
+        allMADs.addAll(calc.calculateMAD());
+        allSpeech.addAll(calc.calculateSpeech(accelZ));
 
-        // estimate METs using different methods
-        List<Double> METsBB = PAcalc.estimateMETs(startTime * 1000,
-                PhysicalActivityCalculator.Method.BRAGE_NONBRANCHED);
-        List<Double> METsBNB = PAcalc.estimateMETs(startTime * 1000, PhysicalActivityCalculator.Method.BRAGE_BRANCHED);
-        List<Double> METsFreedson = PAcalc.estimateMETs(startTime * 1000, PhysicalActivityCalculator.Method.FREEDSON);
-        List<Double> MADxyz = PAcalc.calculateMADxyz();
-        List<Double> MAD = PAcalc.calculateMAD();
-        List<Double> Speech = PAcalc.calculateSpeech(sampleMZDouble);
-
-        // accumulate all results
-        for (int i = 0; i < METsBB.size(); i++) {
-            allMETsBB.add(METsBB.get(i));
-            allMETsBNB.add(METsBNB.get(i));
-            allMETsF.add(METsFreedson.get(i));
-            allMADxyz.add(MADxyz.get(i));
-            allMADs.add(MAD.get(i));
-            allSpeech.add(Speech.get(i));
-        }
-
-        // NOTE: Posture classification is now handled by PostureClassifier
-
-        // get altitude from pressure
+        // Calculate altitude from pressure and write results to binary files
         double[] altitude = MotionDataUtils.getAltitudeFromPressure(sampPres);
-
         try {
-            byte[] outbuf = new byte[size * 2];
-            ByteBuffer outBuffer = ByteBuffer.wrap(outbuf);
-            DoubleBuffer osb = outBuffer.asDoubleBuffer();
-            double[] outBuf = new double[size];
-
-            osb.clear();
-            for (int j = 0; j < MADxyz.size(); j++) {
-                outBuf[j] = MADxyz.get(j); // (int) (motilityIntensity[j] * 1000.0);
-            }
-            osb.put(outBuf, 0, MADxyz.size());
-            outBuffer.limit(MADxyz.size() * 8);
-            fosLying.write(outBuffer);
-            // fosLying.write(outbuf, 0, MADxyz.size() * 8);
-            osb.clear();
-            outBuffer.clear();
-            for (int k = 0; k < altitude.length; k++) {
-                outBuf[k] = (altitude[k]);
-            }
-            osb.put(outBuf, 0, altitude.length);
-            outBuffer.limit(altitude.length * 8);
-            fosAlt.write(outBuffer);
-            // fosAlt.write(outbuf, 0, altitude.length * 8);
-        } catch (IOException e2) {
-            e2.printStackTrace();
+            MotionDataUtils.writeToBinaryChannel(MADxyz, fcMotility);
+            MotionDataUtils.writeToBinaryChannel(altitude, fcAlt);
+        } catch (IOException e) {
+            e.printStackTrace();
         }
-
-        return 0.0;
     }
 
     static private Long correctForTicks(long offset) {
@@ -598,69 +536,94 @@ public class ActivityClassification extends Thread {
     // leftTime and rightTime are in ms
     // ! There are multiple instances of MET values out of bounds
     // ! Needs to be fixed
-    public static Double getAverageMET(double leftTime, double rightTime) {
-        return getAverageMET(leftTime, rightTime, 0);
+    // Time constants for different data granularities
+    private static final int MS_PER_MINUTE = 60000;
+    private static final int MS_PER_POSTURE_INTERVAL = 6000; // 6 seconds
+
+    // Activity metric method indices
+    public static final int METRIC_MET_BRAGE_NONBRANCHED = 0;
+    public static final int METRIC_MAD_XYZ = 1;
+    public static final int METRIC_MAD = 2;
+    public static final int METRIC_SPEECH = 3;
+    public static final int METRIC_MET_BRAGE_BRANCHED = 4;
+    public static final int METRIC_MET_FREEDSON = 5;
+
+    /**
+     * Calculate average activity metric for a time range using default method (MET
+     * Brage Non-Branched).
+     * 
+     * @param leftTime  Start time in microseconds
+     * @param rightTime End time in microseconds
+     * @return Average metric value, or null if no data available
+     */
+    public static Double getAverageActivityMetric(double leftTime, double rightTime) {
+        return getAverageActivityMetric(leftTime, rightTime, METRIC_MET_BRAGE_NONBRANCHED);
     }
 
-    public static Double getAverageMET(double leftTime, double rightTime, int method) {
-        rightTime = (rightTime / 1000) - CurrentOpenData.getInstance().getStarts().get(0).getDwClockTick_ms();
-        leftTime = (leftTime / 1000) - CurrentOpenData.getInstance().getStarts().get(0).getDwClockTick_ms();
-        double av = 0;
-        long ninAv = 0;
-        // for (int i = (int) (leftTime + 30000) / 60000; i < (rightTime + 30000) /
-        // 60000; i += 60000)
-        for (int i = 0; i < allMETsBB.size(); i++)
-        // find minutes which are at least half in the label
-        {
-            int midpoint = i * 60000 + 30000;
-            if (midpoint < leftTime)
-                continue;
-            if (midpoint > rightTime)
-                break;
-            // if (i >= 0 && i < allMETs.size()) {
-            if (method == 0)
-                av += allMETsBB.get(i);
-            if (method == 1)
-                av += allMADxyz.get(i);
-            if (method == 2)
-                av += allMADs.get(i);
-            if (method == 3)
-                av += allSpeech.get(i);
-            if (method == 4)
-                av += allMETsBNB.get(i);
-            if (method == 5)
-                av += allMETsF.get(i);
-            System.out
-                    .println("MET value " + method + " index " + i + " " + midpoint + " " + leftTime + " " + rightTime);
-            ninAv++;
-        }
-        if (ninAv == 0)
+    /**
+     * Calculate average activity metric for a time range.
+     * Uses minute-based averaging where only minutes with midpoint within the time
+     * range are included.
+     * 
+     * @param leftTime  Start time in microseconds
+     * @param rightTime End time in microseconds
+     * @param method    Metric type (use METRIC_* constants)
+     * @return Average metric value, or null if no data available
+     */
+    public static Double getAverageActivityMetric(double leftTime, double rightTime, int method) {
+        // Get the appropriate data list based on method
+        List<Double> sourceData = switch (method) {
+            case METRIC_MET_BRAGE_NONBRANCHED -> allMETsBB;
+            case METRIC_MAD_XYZ -> allMADxyz;
+            case METRIC_MAD -> allMADs;
+            case METRIC_SPEECH -> allSpeech;
+            case METRIC_MET_BRAGE_BRANCHED -> allMETsBNB;
+            case METRIC_MET_FREEDSON -> allMETsF;
+            default -> throw new IllegalArgumentException("Unknown activity metric method: " + method);
+        };
+
+        // Filter data to time range (minute-based intervals)
+        List<Double> filteredData = MotionDataUtils.getDataInTimeRange(sourceData, leftTime, rightTime, MS_PER_MINUTE);
+
+        if (filteredData.isEmpty())
             return null;
-        return av / ninAv;
+
+        // Calculate average
+        double sum = 0;
+        for (Double value : filteredData) {
+            sum += value;
+        }
+
+        return sum / filteredData.size();
     }
 
+    /**
+     * Get the predominant posture(s) for a time range.
+     * Uses 6-second interval data with midpoint-based filtering.
+     * 
+     * @param leftTime  Start time in microseconds
+     * @param rightTime End time in microseconds
+     * @return Posture string, or "Unknown" if no clear posture (0 or >2 unique
+     *         postures)
+     */
     public static String getPosture(double leftTime, double rightTime) {
-        rightTime = (rightTime / 1000) - CurrentOpenData.getInstance().getStarts().get(0).getDwClockTick_ms();
-        leftTime = (leftTime / 1000) - CurrentOpenData.getInstance().getStarts().get(0).getDwClockTick_ms();
-        String posture = "";
-        Set<String> postures = new HashSet<String>();
-        for (int i = 0; i < allPostureLabels.size(); i++) {
-            int midpoint = i * 6000 + 3000; // 6 secondes
-            if (midpoint < leftTime)
-                continue;
-            if (midpoint > rightTime)
-                break;
-            postures.add(allPostureLabels.get(i));
+        // Filter posture data to time range (6-second intervals)
+        List<String> filteredPostures = MotionDataUtils.getDataInTimeRange(allPostureLabels, leftTime, rightTime,
+                MS_PER_POSTURE_INTERVAL);
+
+        // Collect unique postures
+        Set<String> uniquePostures = new HashSet<>(filteredPostures);
+
+        // Return based on number of unique postures found
+        if (uniquePostures.isEmpty() || uniquePostures.size() > 2) {
+            return "Unknown";
+        } else if (uniquePostures.size() == 1) {
+            return uniquePostures.iterator().next();
+        } else {
+            // Two postures: combine with "/"
+            Iterator<String> iterator = uniquePostures.iterator();
+            return iterator.next() + "/" + iterator.next();
         }
-        if (postures.size() == 0 || postures.size() > 2)
-            posture = "Unknown";
-        else {
-            Iterator<String> namesIterator = postures.iterator();
-            posture = namesIterator.next();
-            while (namesIterator.hasNext())
-                posture = posture + "/" + namesIterator.next();
-        }
-        return posture;
     }
 
 }
