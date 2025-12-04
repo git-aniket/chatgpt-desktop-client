@@ -125,7 +125,7 @@ public class StepSet {
 
 	public void updateStepFeatures(double time) {
 		Step s = getStepClosestToTime(time);
-		BinaryFile bf = new BinaryFile("FILTStepInstances");
+		BinaryFile bf = new BinaryFile("FILTAccelVectorMag");
 		s.setImpactValue(bf.getMaximumAfterTime(time));
 		try {
 			bf.close();

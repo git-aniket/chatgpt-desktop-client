@@ -16,6 +16,7 @@ import java.util.List;
 import java.util.Set;
 
 import nl.vu.psy.ams.suite.data.CurrentOpenData;
+import nl.vu.psy.ams.suite.data.FilteredMotGeneratorFast;
 import nl.vu.psy.ams.suite.data.SubsetFilesSingle;
 import nl.vu.psy.ams.suite.data.files.BinaryFile;
 
@@ -151,101 +152,88 @@ public class ActivityClassification extends Thread {
         return true;
     }
 
+    /**
+     * Generate accelerometer magnitude files for step detection and activity
+     * analysis.
+     * 
+     * Pipeline:
+     * 1. Ensure filtered accelerometer files exist (FILTMXR, FILTMYR, FILTMZR)
+     * - If missing, generate them from raw channels (MXR, MYR, MZR)
+     * - Filtered files have 20 Hz low-pass filter applied to remove high-frequency
+     * noise
+     * 2. Calculate 3D magnitude: sqrt(x² + y² + z²) → AccelVectorMag.bin
+     * 3. Apply 0.005 Hz high-pass filter to remove gravity/drift →
+     * FILTAccelVectorMag.bin
+     * 4. Calculate average motility for the recording period
+     * 
+     * @throws Exception if filtered files cannot be generated (e.g., raw channels
+     *                   missing)
+     */
     public static void generateMeanMotilityFile() throws Exception {
         CurrentOpenData cod = CurrentOpenData.getInstance();
 
-        // Check if required channels exist
-        if (!validateRequiredChannels("MXR", "MYR", "MZR")) {
-            return;
-        }
-
-        File meanMotilityFile = new File(cod.getFilePath(), "StepInstances.bin");
-        File meanMotilityFileF = new File(cod.getFilePath(), "FILTStepInstances.bin");
+        File magnitudeFile = new File(cod.getFilePath(), "AccelVectorMag.bin");
+        File filteredMagnitudeFile = new File(cod.getFilePath(), "FILTAccelVectorMag.bin");
 
         // Early return if files already exist
-        if (meanMotilityFile.exists() && meanMotilityFileF.exists() && cod.channelExists("StepInstances")) {
-            SubsetFilesSingle ssf2 = new SubsetFilesSingle(meanMotilityFileF);
+        if (magnitudeFile.exists() && filteredMagnitudeFile.exists() && cod.channelExists("AccelVectorMag")) {
+            SubsetFilesSingle ssf2 = new SubsetFilesSingle(filteredMagnitudeFile);
             ssf2.start();
             return;
         }
 
-        cod.dirtyFiles.add(meanMotilityFile);
-        cod.dirtyFiles.add(meanMotilityFileF);
+        cod.dirtyFiles.add(magnitudeFile);
+        cod.dirtyFiles.add(filteredMagnitudeFile);
         tickFile = new File(cod.getFilePath(), "TicksM.bin");
 
-        // Read filtered accelerometer files using helper
-        File fAccelX = new File(cod.getFilePath(), "FILTMXR.bin");
-        File fAccelY = new File(cod.getFilePath(), "FILTMYR.bin");
-        File fAccelZ = new File(cod.getFilePath(), "FILTMZR.bin");
+        // Ensure filtered accelerometer files exist - generate if needed
+        // These files are created by FilteredMotGeneratorFast with 20 Hz low-pass
+        // filter
+        File filteredAccelX = new File(cod.getFilePath(), "FILTMXR.bin");
+        File filteredAccelY = new File(cod.getFilePath(), "FILTMYR.bin");
+        File filteredAccelZ = new File(cod.getFilePath(), "FILTMZR.bin");
 
+        if (!filteredAccelX.exists() || !filteredAccelY.exists() || !filteredAccelZ.exists()) {
+            // Generate filtered files first
+            FilteredMotGeneratorFast fMot = new FilteredMotGeneratorFast();
+            fMot.GenerateFilteredMot("MXR");
+            fMot.GenerateFilteredMot("MYR");
+            fMot.GenerateFilteredMot("MZR");
+        }
+
+        // Read the filtered accelerometer data
         AccelerometerDataReader.AccelData accelData = AccelerometerDataReader.readAllAsIntegers(
-                fAccelX, fAccelY, fAccelZ);
+                filteredAccelX, filteredAccelY, filteredAccelZ);
 
-        // Compute magnitude using helper
-        int[] meanMotility = AccelerometerDataReader.calculateMagnitude(accelData);
+        // Calculate 3D magnitude: sqrt(x² + y² + z²)
+        int[] magnitude = AccelerometerDataReader.calculateMagnitude(accelData);
 
-        // Write to binary file
-        try (FileOutputStream fos = new FileOutputStream(meanMotilityFile);
+        // Write raw magnitude to binary file
+        try (FileOutputStream fos = new FileOutputStream(magnitudeFile);
                 FileChannel channel = fos.getChannel()) {
 
             ByteBuffer buffer = ByteBuffer.allocate(accelData.numSamples * 4);
             IntBuffer intBuffer = buffer.asIntBuffer();
-            intBuffer.put(meanMotility);
+            intBuffer.put(magnitude);
             buffer.position(0);
             buffer.limit(accelData.numSamples * 4);
             channel.write(buffer);
         }
 
-        // Register the file
-        SubsetFilesSingle ssf1 = new SubsetFilesSingle(meanMotilityFile);
+        // Register the raw magnitude file
+        SubsetFilesSingle ssf1 = new SubsetFilesSingle(magnitudeFile);
         ssf1.start();
 
-        // Apply high-pass filter
-        highPassFilterButt(meanMotilityFile, meanMotilityFileF);
-        SubsetFilesSingle ssf2 = new SubsetFilesSingle(meanMotilityFileF);
+        // Apply 0.005 Hz high-pass filter to remove gravity and slow drift components
+        // This isolates dynamic motion for step detection
+        highPassFilterButt(magnitudeFile, filteredMagnitudeFile);
+        SubsetFilesSingle ssf2 = new SubsetFilesSingle(filteredMagnitudeFile);
         ssf2.start();
 
-        // Calculate average motility
-        try (BinaryFile bf = new BinaryFile("FILTStepInstances")) {
+        // Calculate and store average motility for the entire recording
+        try (BinaryFile bf = new BinaryFile("FILTAccelVectorMag")) {
             avMeanMotility = bf.getAverageBetweenTimes(cod.getStartTimeInUS(), cod.getEndTimeInUS());
         }
-    }
-
-    public static double[] centralDifference(double[] input) {
-        int size = input.length;
-        double[] output = new double[size];
-
-        // Handle the first element (padding)
-        output[0] = (input[1] - input[0]);
-
-        // Compute the central difference for the inner elements
-        for (int i = 1; i < size - 1; i++) {
-            double centralDiff = (input[i + 1] - input[i - 1]) / 2.0;
-            output[i] = centralDiff;
-        }
-
-        // Handle the last element (padding)
-        output[size - 1] = (input[size - 1] - input[size - 2]);
-
-        return output;
-    }
-
-    // Get the indexes where sign changes have happened
-    public static int[] getSignChanges(double[] input) {
-        int size = input.length;
-        int[] output = new int[size];
-
-        for (int i = 1; i < size; i++) {
-            if (input[i] > 0 && input[i - 1] < 0) {
-                output[i] = 1; // slope is positive
-            } else if (input[i] < 0 && input[i - 1] > 0) {
-                output[i] = -1; // slope is negative
-            } else {
-                output[i] = 0; // else slope is zero
-            }
-        }
-
-        return output;
     }
 
     public static void generateClassificationFile() throws Exception {
@@ -407,9 +395,6 @@ public class ActivityClassification extends Thread {
     /**
      * Apply zero-phase 4th-order Butterworth high-pass filter for gravity removal.
      * Equivalent to MATLAB: [b,a] = butter(4, 0.005, 'high')
-     * 
-     * Uses ZeroPhaseFilter with frequency-dependent padding to avoid settling
-     * transients.
      * 
      * @param inFile  Input file containing integer samples
      * @param outFile Output file for filtered samples

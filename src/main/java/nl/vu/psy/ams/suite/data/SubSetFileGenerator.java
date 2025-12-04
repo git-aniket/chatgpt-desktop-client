@@ -404,7 +404,7 @@ public class SubSetFileGenerator extends Thread {
 			}
 		}
 		String[] filteredChans = { "magX", "magY", "magZ", "MXR", "MYR", "MZR", "GyroX", "GyroY", "GyroZ", "ECG", "SCL",
-				"V2ecg", "V3ecg", "StepInstances", "P_sc", "T_sc" };
+				"V2ecg", "V3ecg", "AccelVectorMag", "P_sc", "T_sc" };
 		for (String chan : filteredChans)
 			if (CurrentOpenData.getInstance().channelExists(chan)) {
 				try {

@@ -558,7 +558,7 @@ public class LITableData {
 		double lblLength = (rightTime - leftTime);
 		double valuesSteps[] = null;
 		int steps = -1;
-		if (cod.channelExists("StepInstances")) {
+		if (cod.channelExists("AccelVectorMag")) {
 			valuesSteps = lbl.getMinMaxStep();
 			steps = lbl.getStepCount();
 		}
@@ -944,7 +944,7 @@ public class LITableData {
 					}
 					break;
 				case avStep: // average step
-					if (cod.channelExists("StepInstances")) {
+					if (cod.channelExists("AccelVectorMag")) {
 						vl = lbl.getAvStep();
 						if (Double.isNaN(vl)) {
 							vals[i] = new DataValue(misVal);
@@ -956,7 +956,7 @@ public class LITableData {
 					}
 					break;
 				case minStep: // min step
-					if (cod.channelExists("StepInstances")) {
+					if (cod.channelExists("AccelVectorMag")) {
 						if (Double.isNaN(valuesSteps[0])) {
 							vals[i] = new DataValue(misVal);
 						} else {
@@ -967,7 +967,7 @@ public class LITableData {
 					}
 					break;
 				case maxStep: // max step
-					if (cod.channelExists("StepInstances")) {
+					if (cod.channelExists("AccelVectorMag")) {
 						if (Double.isNaN(valuesSteps[1])) {
 							vals[i] = new DataValue(misVal);
 						} else {
@@ -978,7 +978,7 @@ public class LITableData {
 					}
 					break;
 				case nStep: // step count
-					if (cod.channelExists("StepInstances")) {
+					if (cod.channelExists("AccelVectorMag")) {
 						if (steps == -1)
 							vals[i] = new DataValue(misVal);
 						else
@@ -988,7 +988,7 @@ public class LITableData {
 					}
 					break;
 				case nStepMin: // steps / minute
-					if (cod.channelExists("StepInstances")) {
+					if (cod.channelExists("AccelVectorMag")) {
 						if (steps == -1 || lblLength < 60 * 1000000)
 							vals[i] = new DataValue(misVal);
 						else

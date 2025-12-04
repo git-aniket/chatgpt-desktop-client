@@ -251,7 +251,7 @@ public class InspectTab extends AmsTab implements ItemListener, AutoCloseable {
 			drawTest.connectToGraph(graph);
 		}
 		String[] filteredChans = { "magX", "magY", "magZ", "MXR", "MYR", "MZR", "GyroX", "GyroY", "GyroZ", "ECG",
-				"DZDT", "V2ecg", "V3ecg", "StepInstances", "P_sc", "T_sc", "SCL" };
+				"DZDT", "V2ecg", "V3ecg", "AccelVectorMag", "P_sc", "T_sc", "SCL" };
 		if (Arrays.stream(filteredChans).anyMatch(s.getSzID()::equals)) {
 			if (s.getSzID().equals("P_sc") || s.getSzID().equals("T_sc")) {
 				File yFile = new File(cod.getFilePath(), "FILT" + s.getSzID() + ".dbin");
@@ -275,7 +275,7 @@ public class InspectTab extends AmsTab implements ItemListener, AutoCloseable {
 					drawTest1.setInvert(true);
 				drawTest1.connectToGraph(graph);
 				bds.add(drawTest1);
-				if (s.getSzID().equals("StepInstances"))
+				if (s.getSzID().equals("AccelVectorMag"))
 					graph.addOverlay(new StepOverlay(graph));
 			}
 		} else if (s.getSzID().equals("Z0")
@@ -351,9 +351,9 @@ public class InspectTab extends AmsTab implements ItemListener, AutoCloseable {
 		YMT("YMT", "Acceleration right (g)", "Acceleration"),
 		MZR("MZR", "Acceleration up (g)", "Acceleration"),
 		ZMT("ZMT", "Acceleration up (g)", "Acceleration"),
-		GyroX("GyroX", "Rotation roll (\u00B0/s)", "Rotation"),
-		GyroY("GyroY", "Rotation pitch (\u00B0/s)", "Rotation"),
-		GyroZ("GyroZ", "Rotation yaw (\u00B0/s)", "Rotation"),
+		GyroX("GyroX", "Rotation rate roll (\u00B0/s)", "Rotation"),
+		GyroY("GyroY", "Rotation rate pitch (\u00B0/s)", "Rotation"),
+		GyroZ("GyroZ", "Rotation rate yaw (\u00B0/s)", "Rotation"),
 		magX("magX", "Magnetic field forward (Gauss)", "Magnetic field"),
 		magY("magY", "Magnetic field right (Gauss)", "Magnetic field"),
 		magZ("magZ", "Magnetic field up (Gauss)", "Magnetic field"),
@@ -367,7 +367,7 @@ public class InspectTab extends AmsTab implements ItemListener, AutoCloseable {
 		P_sc("P_sc", "Barometric pressure (hPa)", "QC"),
 		SCL("SCL", "Skin conductance (\u00B5S)", "Other"),
 		MYA("MYA", "Average motility (g)", "Other"),
-		StepInstances("StepInstances", "Detected steps (g)", "Other"),
+		AccelVectorMag("AccelVectorMag", "Steps", "Other"),
 		MotilityIntensity("MotilityIntensity", "Motility (MADxyz (millig))", "Other"),
 		Altitude("Altitude", "Relative altitude (m)", "Other"),
 		VIS("Pos Visualization", "Pos Visualization", "Other");

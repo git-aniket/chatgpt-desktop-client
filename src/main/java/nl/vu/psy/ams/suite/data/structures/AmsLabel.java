@@ -1022,7 +1022,7 @@ public class AmsLabel implements Comparable<AmsLabel> {
 	}
 
 	public double getAvStep() {
-		BinaryFile bf = new BinaryFile("StepInstances");
+		BinaryFile bf = new BinaryFile("AccelVectorMag");
 		double av = bf.getAverageBetweenTimes(leftTime, rightTime);
 		try {
 			bf.close();
@@ -1033,7 +1033,7 @@ public class AmsLabel implements Comparable<AmsLabel> {
 	}
 
 	public double[] getMinMaxStep() {
-		BinaryFile bf = new BinaryFile("StepInstances");
+		BinaryFile bf = new BinaryFile("AccelVectorMag");
 		double[] mm = bf.getMinMaxBetweenTimes(leftTime, rightTime);
 		try {
 			bf.close();

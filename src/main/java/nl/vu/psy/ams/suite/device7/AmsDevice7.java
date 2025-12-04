@@ -335,7 +335,7 @@ public class AmsDevice7 {
 		subList.add(chan.getSzID());
 		channelInfo.add(chan);
 		chan = new Ams7fsChannelInfo();
-		chan.setSzID("StepInstances"); //
+		chan.setSzID("AccelVectorMag"); //
 		chan.setSzUnit("g");
 		chan.setnBits(16);
 		chan.setRealConstant(0);

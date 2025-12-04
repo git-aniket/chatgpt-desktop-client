@@ -111,13 +111,13 @@ public class OnlineDialog7 extends JFrame implements ItemListener {
 	ArrayList<OnlineDrawer> odListF = new ArrayList<OnlineDrawer>();
 	private boolean firstItem = true;
 	private final String[] filteredChans = { "ECG", "V2ecg", "V3ecg", "magX", "magY", "magZ", "MXR", "MYR", "MZR",
-			"GyroX", "GyroY", "GyroZ", "StepInstances", "SCL" };
+			"GyroX", "GyroY", "GyroZ", "AccelVectorMag", "SCL" };
 	final String[] defaultChans = { "ECG", "DZDT", "Z0", "MXR" };
 	final String[] AChans = { "ECG", "V2ecg", "V3ecg", "DZDT", "Z0", "Visrc", "T" };
 	final String[] MChans = { "MXR", "MYR", "MZR", "GyroX", "GyroY", "GyroZ", "Temp", "Pos Visualization", "Yaw",
-			"Roll", "Pitch", "StepInstances" };
+			"Roll", "Pitch", "AccelVectorMag" };
 	final String[] DChans = { "P_sc", "T_sc" };
-	final String[] GChans = { "magX", "magY", "magZ", "Pos Visualization", "Yaw", "Roll", "Pitch", "StepInstances" };
+	final String[] GChans = { "magX", "magY", "magZ", "Pos Visualization", "Yaw", "Roll", "Pitch", "AccelVectorMag" };
 	private JTextField text1 = new JTextField(32);
 	private Vector<TimeShowOverlay> tsOverlays;
 	private OnlineDrawer r = null, p = null, ya = null;
@@ -451,7 +451,7 @@ public class OnlineDialog7 extends JFrame implements ItemListener {
 			graph.addUnderlay(evo);
 		}
 		boolean useTicks = true, isReal = false; // !(s.getSzID().equals("Tickdiff ADC"));
-		if (s.getFormula().length() >= 1 || s.getSzID().equals("StepInstances"))
+		if (s.getFormula().length() >= 1 || s.getSzID().equals("AccelVectorMag"))
 			isReal = true;
 		OnlineDrawer od = new OnlineDrawer(s.getSzID(), yAxis, false, isReal, useTicks);
 		if (s.getSzID().equals("Roll"))
@@ -470,7 +470,7 @@ public class OnlineDialog7 extends JFrame implements ItemListener {
 			OnlineDrawer odF = new OnlineDrawer(s.getSzID(), yAxis, false, (s.getFormula().length() >= 1), useTicks,
 					new Color(AppSettings.getInstance().getIntPropertyOrToBeSaved(Settings.LABELAVHRACOLOR)));
 			odF.setECG(s.getSzID().equals("ECG"));
-			odF.setMeanMot(s.getSzID().equals("StepInstances"));
+			odF.setMeanMot(s.getSzID().equals("AccelVectorMag"));
 			odF.setFiltered(true);
 			odF.setDivider((int) s.getDwDivider());
 			odF.setSlopeAndConstant(s.getRealSlope(), s.getRealConstant());

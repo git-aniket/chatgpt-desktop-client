@@ -425,12 +425,12 @@ public class CurrentOpenData {
 			SubsetFilesSingle ssf1 = new SubsetFilesSingle(outFile, tempDir2);
 			ssf1.start();
 		}
-		if (!channelExists("StepInstances")) {
+		if (!channelExists("AccelVectorMag")) {
 			Ams7fsChannelInfo chan = new Ams7fsChannelInfo();
 			Ams7fsChannelInfo chanM;
 			try {
 				chanM = getChannelInfoFromID("MXR");
-				chan.setSzID("StepInstances"); //
+				chan.setSzID("AccelVectorMag"); //
 				chan.setSzUnit("g");
 				chan.setnBits(chanM.getnBits());
 				chan.setRealConstant(chanM.getRealConstant());
@@ -1375,10 +1375,10 @@ public class CurrentOpenData {
 				stepSet.addStep((Step) o, false);
 			}
 			if (tempList.isEmpty())
-				stepSet.reCalculate("FILTStepInstances.bin");
+				stepSet.reCalculate("FILTAccelVectorMag.bin");
 		} else {
-			if (channelExists("StepInstances")) {
-				stepSet.reCalculate("FILTStepInstances.bin");
+			if (channelExists("AccelVectorMag")) {
+				stepSet.reCalculate("FILTAccelVectorMag.bin");
 			}
 		}
 		mon.setProgress(9);
