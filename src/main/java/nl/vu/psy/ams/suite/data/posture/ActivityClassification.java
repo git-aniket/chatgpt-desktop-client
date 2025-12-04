@@ -21,8 +21,6 @@ import nl.vu.psy.ams.suite.data.SubsetFilesSingle;
 import nl.vu.psy.ams.suite.data.files.BinaryFile;
 
 import nl.vu.psy.ams.suite.gui.MainFrame;
-import nl.vu.psy.ams.suite.main.AppSettings;
-import nl.vu.psy.ams.suite.main.AppSettings.Settings;
 
 public class ActivityClassification extends Thread {
 
@@ -114,7 +112,6 @@ public class ActivityClassification extends Thread {
     static RandomAccessFile is = null;
     static File tickFile;
 
-    private static final int SAMPLING_FREQUENCY = 1000;
     private static List<Double> allMETsBB = new ArrayList<>();
     private static List<Double> allMETsBNB = new ArrayList<>();
     private static List<Double> allMETsF = new ArrayList<>();
@@ -420,7 +417,7 @@ public class ActivityClassification extends Thread {
 
         // Calculate physical activity metrics
         long startTime = (tickFile != null && tickFile.exists())
-                ? correctForTicks(startSampleAbsolute)
+                ? MotionDataUtils.correctForTicks(startSampleAbsolute, tickFile)
                 : startSampleAbsolute;
 
         PhysicalActivityCalculator calc = PhysicalActivityCalculator.getInstance();
@@ -444,92 +441,6 @@ public class ActivityClassification extends Thread {
         } catch (IOException e) {
             e.printStackTrace();
         }
-    }
-
-    static private Long correctForTicks(long offset) {
-        if (!tickFile.exists()) {
-            return offset;
-        }
-        long tick, diff, oldOffset = offset;
-        long startTime = CurrentOpenData.getInstance().getStarts().get(0).getDwClockTick_ms();
-        try {
-            is = new RandomAccessFile(tickFile, "r");
-            long len = is.length() / 4;
-            if (offset > len - 1)
-                offset = len - 1;
-            if (offset < 0)
-                offset = 0;
-            is.seek(4 * offset);
-            tick = is.readInt() - startTime;
-            diff = tick - offset;
-            offset -= diff;
-            long diff2 = tick - oldOffset;
-            if (Math.abs(diff) < 100000) {
-                int loopCount = 0;
-                while (Math.abs(diff2) > 1 && loopCount < 1000) {
-                    if (offset < 0 || 4 * offset >= len * 4) {
-                        break;
-                    }
-                    is.seek(4 * offset);
-                    tick = is.readInt() - startTime;
-                    diff2 = tick - oldOffset;
-                    offset -= diff2;
-                    loopCount++;
-                }
-                if (loopCount > 2)
-                    System.out.println("correct ticks steps: " + loopCount + " " + diff);
-            } else {
-                // binary search
-                long low = 0, high = len - 1, mid = 0;
-                while (low <= high) {
-                    mid = low + (high - low) / 2;
-                    is.seek(4 * mid);
-                    tick = (is.readInt() - startTime);
-
-                    if (tick == oldOffset) {
-                        offset = mid;
-                        break;
-                    } else if (tick < oldOffset)
-                        low = mid + 1;
-
-                    else
-                        high = mid - 1;
-                }
-                if (tick != oldOffset) { // not found
-                    if (low < 0)
-                        low = 0;
-                    if (low > len - 1)
-                        low = len - 1;
-                    is.seek(4 * low);
-                    long tick1 = (is.readInt() - startTime);
-                    if (high < 0)
-                        high = 0;
-                    if (high > len - 1)
-                        high = len - 1;
-                    is.seek(4 * high);
-                    long tick2 = (is.readInt() - startTime);
-                    if (oldOffset - tick1 < tick2 - oldOffset)
-                        offset = low;
-                    else
-                        offset = high;
-                }
-            }
-            if (offset < 0)
-                offset = 0;
-            if (offset >= len * 4)
-                offset = len * 4 - 1;
-        } catch (IOException e) {
-            e.printStackTrace();
-        } finally {
-            if (is != null) {
-                try {
-                    is.close();
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
-            }
-        }
-        return offset;
     }
 
     // get the average MET value for the given time range

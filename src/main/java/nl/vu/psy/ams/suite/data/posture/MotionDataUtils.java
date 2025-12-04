@@ -6,6 +6,7 @@ import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.nio.DoubleBuffer;
 import java.nio.FloatBuffer;
@@ -16,9 +17,179 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Utility class for motion data processing.
+ * Utility class for motion data processing and timestamp correction.
  */
 public class MotionDataUtils {
+
+    // Threshold for choosing between iterative vs binary search correction (in
+    // milliseconds)
+    private static final long SMALL_DRIFT_THRESHOLD_MS = 100000; // 100 seconds
+    private static final int MAX_ITERATIVE_STEPS = 1000;
+    private static final int BYTES_PER_TICK = 4; // Each tick is stored as a 4-byte integer
+
+    /**
+     * Corrects sample index for hardware clock drift using tick file timestamps.
+     * 
+     * The tick file contains actual hardware timestamps at regular intervals. Over
+     * long recordings,
+     * there can be drift between calculated timestamps (sample_index / sample_rate)
+     * and actual
+     * hardware clock times. This function finds the correct sample index that
+     * corresponds to
+     * a given timestamp by looking up hardware ticks.
+     * 
+     * @param estimatedSampleIndex Sample index calculated from timestamp (may have
+     *                             drift)
+     * @param tickFile             File containing hardware timestamps
+     * @return Corrected sample index aligned with hardware clock, or original if no
+     *         tick file
+     */
+    public static Long correctForTicks(long estimatedSampleIndex, File tickFile) {
+        // If no tick file exists, no correction is possible
+        if (tickFile == null || !tickFile.exists()) {
+            return estimatedSampleIndex;
+        }
+
+        long correctedSampleIndex = estimatedSampleIndex;
+        long recordingStartTimeMs = nl.vu.psy.ams.suite.data.CurrentOpenData.getInstance()
+                .getStarts().get(0).getDwClockTick_ms();
+        RandomAccessFile tickFileReader = null;
+
+        try {
+            tickFileReader = new RandomAccessFile(tickFile, "r");
+            long totalTickEntries = tickFileReader.length() / BYTES_PER_TICK;
+
+            // Clamp sample index to valid range
+            correctedSampleIndex = Math.max(0, Math.min(estimatedSampleIndex, totalTickEntries - 1));
+
+            // Read hardware timestamp at the estimated position
+            tickFileReader.seek(BYTES_PER_TICK * correctedSampleIndex);
+            long hardwareTimestampMs = tickFileReader.readInt() - recordingStartTimeMs;
+
+            // Calculate initial drift between hardware time and sample index
+            long initialDriftMs = hardwareTimestampMs - estimatedSampleIndex;
+
+            // Apply initial correction estimate
+            correctedSampleIndex -= initialDriftMs;
+
+            // Calculate error between hardware timestamp and target timestamp
+            long timestampErrorMs = hardwareTimestampMs - estimatedSampleIndex;
+
+            // Choose correction strategy based on drift magnitude
+            if (Math.abs(initialDriftMs) < SMALL_DRIFT_THRESHOLD_MS) {
+                // Small drift: Use fast iterative convergence
+                correctedSampleIndex = correctSmallDrift(tickFileReader, estimatedSampleIndex,
+                        correctedSampleIndex, recordingStartTimeMs, totalTickEntries, timestampErrorMs, initialDriftMs);
+            } else {
+                // Large drift: Use binary search for efficiency
+                correctedSampleIndex = correctLargeDrift(tickFileReader, estimatedSampleIndex,
+                        recordingStartTimeMs, totalTickEntries);
+            }
+
+            // Final bounds check
+            correctedSampleIndex = Math.max(0, Math.min(correctedSampleIndex, totalTickEntries - 1));
+
+        } catch (IOException e) {
+            System.err.println("Error reading tick file for drift correction: " + e.getMessage());
+            e.printStackTrace();
+        } finally {
+            if (tickFileReader != null) {
+                try {
+                    tickFileReader.close();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+
+        return correctedSampleIndex;
+    }
+
+    /**
+     * Corrects small clock drift using iterative convergence.
+     * Quickly converges to the correct sample index in a few iterations.
+     */
+    private static long correctSmallDrift(RandomAccessFile tickFileReader, long targetTimestampMs,
+            long currentSampleIndex, long recordingStartTimeMs, long totalTickEntries,
+            long timestampErrorMs, long initialDriftMs) throws IOException {
+
+        int iterationCount = 0;
+
+        // Iteratively refine the sample index until timestamp error is minimal
+        while (Math.abs(timestampErrorMs) > 1 && iterationCount < MAX_ITERATIVE_STEPS) {
+            // Check bounds
+            if (currentSampleIndex < 0 || currentSampleIndex >= totalTickEntries) {
+                break;
+            }
+
+            // Read hardware timestamp at current position
+            tickFileReader.seek(BYTES_PER_TICK * currentSampleIndex);
+            long hardwareTimestampMs = tickFileReader.readInt() - recordingStartTimeMs;
+
+            // Calculate error and adjust sample index
+            timestampErrorMs = hardwareTimestampMs - targetTimestampMs;
+            currentSampleIndex -= timestampErrorMs;
+
+            iterationCount++;
+        }
+
+        // Log if convergence took many iterations (indicates potential issues)
+        if (iterationCount > 2) {
+            System.out.println("Tick correction converged in " + iterationCount +
+                    " steps (initial drift: " + initialDriftMs + " ms)");
+        }
+
+        return currentSampleIndex;
+    }
+
+    /**
+     * Corrects large clock drift using binary search.
+     * Efficiently finds the sample index with the closest matching hardware
+     * timestamp.
+     */
+    private static long correctLargeDrift(RandomAccessFile tickFileReader, long targetTimestampMs,
+            long recordingStartTimeMs, long totalTickEntries) throws IOException {
+
+        long lowIndex = 0;
+        long highIndex = totalTickEntries - 1;
+        long midIndex = 0;
+        long hardwareTimestampMs = 0;
+
+        // Binary search for the closest matching timestamp
+        while (lowIndex <= highIndex) {
+            midIndex = lowIndex + (highIndex - lowIndex) / 2;
+
+            tickFileReader.seek(BYTES_PER_TICK * midIndex);
+            hardwareTimestampMs = tickFileReader.readInt() - recordingStartTimeMs;
+
+            if (hardwareTimestampMs == targetTimestampMs) {
+                // Exact match found
+                return midIndex;
+            } else if (hardwareTimestampMs < targetTimestampMs) {
+                lowIndex = midIndex + 1;
+            } else {
+                highIndex = midIndex - 1;
+            }
+        }
+
+        // Exact match not found - find the closest timestamp
+        // Clamp indices to valid range
+        lowIndex = Math.max(0, Math.min(lowIndex, totalTickEntries - 1));
+        highIndex = Math.max(0, Math.min(highIndex, totalTickEntries - 1));
+
+        // Read timestamps at boundary positions
+        tickFileReader.seek(BYTES_PER_TICK * lowIndex);
+        long timestampAtLow = tickFileReader.readInt() - recordingStartTimeMs;
+
+        tickFileReader.seek(BYTES_PER_TICK * highIndex);
+        long timestampAtHigh = tickFileReader.readInt() - recordingStartTimeMs;
+
+        // Return the index with the closest timestamp
+        long errorAtLow = Math.abs(targetTimestampMs - timestampAtLow);
+        long errorAtHigh = Math.abs(targetTimestampMs - timestampAtHigh);
+
+        return (errorAtLow < errorAtHigh) ? lowIndex : highIndex;
+    }
 
     /**
      * Convert raw accelerometer counts to physical acceleration in m/s^2 using the
