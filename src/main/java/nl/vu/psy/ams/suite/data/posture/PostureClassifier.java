@@ -7,6 +7,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import java.io.File;
+import java.util.ArrayList;
 import java.util.List;
 
 public class PostureClassifier {
@@ -87,5 +88,32 @@ public class PostureClassifier {
                 labelSet.add(label);
             }
         }
+    }
+
+    /**
+     * Get posture labels as a timeline for use by ActivityClassification.
+     * Converts posture periods into 6-second interval labels.
+     * 
+     * @return List of posture label strings at 6-second intervals
+     */
+    public List<String> getPostureLabelsForTimeline() {
+        List<String> labels = new ArrayList<>();
+        if (postureTimeline == null) {
+            return labels;
+        }
+
+        // Convert each posture period into 6-second interval labels
+        for (PosturePeriod period : postureTimeline) {
+            long startTime = (long) period.startTime();
+            long endTime = (long) period.endTime();
+            String postureName = period.posture().toString();
+
+            // Generate labels at 6-second intervals (6000 ms = 6000000 microseconds)
+            for (long time = startTime; time < endTime; time += 6000000) {
+                labels.add(postureName);
+            }
+        }
+
+        return labels;
     }
 }

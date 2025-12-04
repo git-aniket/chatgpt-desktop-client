@@ -509,6 +509,16 @@ public class ActivityClassification extends Thread {
     }
 
     /**
+     * Populate the posture labels list from PostureClassifier.
+     * This should be called after posture classification is complete.
+     */
+    public static void populatePostureLabels() {
+        PostureClassifier classifier = PostureClassifier.getInstance();
+        allPostureLabels.clear();
+        allPostureLabels.addAll(classifier.getPostureLabelsForTimeline());
+    }
+
+    /**
      * Get the predominant posture(s) for a time range.
      * Uses 6-second interval data with midpoint-based filtering.
      * 

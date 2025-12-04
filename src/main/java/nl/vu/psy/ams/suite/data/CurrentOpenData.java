@@ -1500,8 +1500,10 @@ public class CurrentOpenData {
 		// Detect postures if NOT loaded from disk
 		if (postureLabels.getLabels().isEmpty()) {
 			PostureClassifier postureClassifier = PostureClassifier.getInstance();
-			if (postureClassifier.classify(getFilePath()) > 0)
+			if (postureClassifier.classify(getFilePath()) > 0) {
 				postureClassifier.addPostureLabelsToLabelSet(postureLabels);
+				ActivityClassification.populatePostureLabels();
+			}
 		}
 
 		SetUpTimeBar();
