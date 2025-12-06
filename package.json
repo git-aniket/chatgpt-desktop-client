@@ -5,14 +5,19 @@
   "type": "module",
   "scripts": {
     "start": "electron .",
-    "dist": "electron-builder --linux snap"
+    "dist": "electron-builder --linux deb"
   },
   "build": {
     "appId": "com.example.chatgptdesktopclient",
+    "productName": "ChatGPT Desktop",
     "linux": {
-      "target": "snap",
-      "icon": "assets/icon.png",
-      "category": "Utility"
+      "target": "deb",
+      "icon": "build/icons",
+      "category": "Network",
+      "maintainer": "Tanmoy Ganguly",
+      "vendor": "ChatGPT Desktop",
+      "synopsis": "Desktop client for ChatGPT",
+      "description": "A simple and efficient desktop client for ChatGPT, built with Electron. Provides a native desktop experience for interacting with OpenAI's ChatGPT."
     }
   },
   "repository": "https://github.com/xanmoy/chatgpt-desktop-client.git",

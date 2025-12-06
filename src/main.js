@@ -142,11 +142,6 @@ if (!appLock) {
     app.whenReady().then(async () => {
         const chatgptSession = session.fromPartition('persist:chatgpt-session');
 
-        // Clear old session storage on app exit to fix expired login issues
-        app.on('before-quit', () => {
-            chatgptSession.clearStorageData();
-        });
-
         // Force OpenAI & Google sign-in to open in an external browser
         chatgptSession.webRequest.onBeforeRequest(
             { urls: ['https://accounts.google.com/*', 'https://chat.openai.com/auth/*'] },
