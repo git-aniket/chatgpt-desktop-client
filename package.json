@@ -5,7 +5,17 @@
   "type": "module",
   "scripts": {
     "start": "electron .",
-    "dist": "electron-builder --linux deb"
+    "dev": "electron .",
+    "dist": "electron-builder --linux deb",
+    "build": "npm run dist",
+    "clean": "rm -rf dist build/icons node_modules package-lock.json",
+    "clean:dist": "rm -rf dist",
+    "rebuild": "npm run clean:dist && npm run dist",
+    "install:deb": "sudo apt install -y ./dist/chatgpt-desktop-client_*_amd64.deb",
+    "uninstall": "sudo apt remove -y chatgpt-desktop-client",
+    "reinstall": "sudo apt remove -y chatgpt-desktop-client || true && npm run install:deb",
+    "build-and-install": "npm run dist && npm run reinstall",
+    "test": "npm start"
   },
   "build": {
     "appId": "com.example.chatgptdesktopclient",
@@ -28,7 +38,13 @@
     "Linux",
     "desktopApplication"
   ],
-  "author": "Tanmoy Ganguly",
+  "author": "Tanmoy Ganguly (Original Author), Aniket Mazumder (Contributor)",
+  "contributors": [
+    {
+      "name": "Aniket Mazumder",
+      "email": "mazumder_aniket@outlook.com"
+    }
+  ],
   "license": "ISC",
   "description": "A simple and efficient desktop client for ChatGPT.",
   "devDependencies": {
