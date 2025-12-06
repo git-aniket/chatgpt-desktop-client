@@ -2,6 +2,22 @@
 
 A lightweight, secure, and native desktop client for ChatGPT, **built specifically for Linux users**. While OpenAI provides official apps for Windows and macOS, this project brings a dedicated, open-source ChatGPT experience to the Linux desktop.
 
+> **Note**: This is an enhanced fork of [xanmoy/chatgpt-desktop-client](https://github.com/xanmoy/chatgpt-desktop-client) with significant security improvements, build automation, and Linux-focused enhancements.
+
+## 🔄 **What's Different in This Fork?**
+
+This fork includes major improvements over the original:
+
+- 🔒 **Security**: Fixed all 8 vulnerabilities, updated Electron to v39.2.6
+- 📦 **Packaging**: Changed from Snap to native .deb packages
+- 🤖 **Automation**: Added 12 npm scripts + comprehensive Makefile
+- 🎨 **Icons**: Proper multi-size Linux icon integration
+- 💾 **UX**: Persistent login sessions (no re-login on restart)
+- 📚 **Documentation**: Linux-focused README and build guides
+
+> [!IMPORTANT]
+> **Login Notice**: Google account login is not supported. Please use **Microsoft account** or **email/password** to sign in. Anonymous usage is also available.
+
 ![ChatGPT Desktop Client](https://raw.githubusercontent.com/xanmoy/chatgpt-desktop-client/refs/heads/main/screenshots/chatgpt.webp)
 
 ## 🐧 **Why Linux?**
@@ -21,7 +37,7 @@ OpenAI's official ChatGPT desktop app is available for Windows and macOS, but **
 
 ### **Option 1: Install Pre-built .deb Package (Recommended)**
 
-Download the latest `.deb` package from the [Releases](https://github.com/xanmoy/chatgpt-desktop-client/releases) page and install:
+Download the latest `.deb` package from the [Releases](https://github.com/git-aniket/chatgpt-desktop-client/releases) page and install:
 
 ```bash
 sudo apt install ./chatgpt-desktop-client_*_amd64.deb
@@ -32,7 +48,7 @@ sudo apt install ./chatgpt-desktop-client_*_amd64.deb
 1. **Clone the repository**:
 
 ```bash
-git clone https://github.com/xanmoy/chatgpt-desktop-client.git
+git clone https://github.com/git-aniket/chatgpt-desktop-client.git
 cd chatgpt-desktop-client
 ```
 
@@ -150,6 +166,7 @@ sudo apt remove chatgpt-desktop-client
 ## 🔧 **Requirements**
 
 - **OS**: Debian, Ubuntu, Linux Mint, or other Debian-based distributions
+  - ✅ Tested on **Debian 13 (Trixie)**
 - **Node.js**: v16 or higher (for building from source)
 - **npm**: v7 or higher (for building from source)
 
@@ -181,6 +198,17 @@ This project is licensed under the ISC License. See the [LICENSE](./LICENSE) fil
 
 ## 🙏 **Acknowledgments**
 
+### Original Project
+This project is a fork of [chatgpt-desktop-client](https://github.com/xanmoy/chatgpt-desktop-client) by **Tanmoy Ganguly** ([@xanmoy](https://github.com/xanmoy)). Thank you for creating the foundation of this project!
+
+### Enhancements by
+**Aniket Mazumder** ([@git-aniket](https://github.com/git-aniket))
+- Security fixes and Electron updates
+- Build automation and .deb packaging
+- Linux desktop integration improvements
+- Documentation enhancements
+
+### Technologies
 - **Electron** - Framework for building cross-platform desktop apps
 - **OpenAI** - For creating ChatGPT
 - **Linux Community** - For inspiration and support

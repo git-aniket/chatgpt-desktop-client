@@ -30,7 +30,7 @@
       "description": "A simple and efficient desktop client for ChatGPT, built with Electron. Provides a native desktop experience for interacting with OpenAI's ChatGPT."
     }
   },
-  "repository": "https://github.com/xanmoy/chatgpt-desktop-client.git",
+  "repository": "https://github.com/git-aniket/chatgpt-desktop-client.git",
   "keywords": [
     "Electron",
     "ChatGPT",
